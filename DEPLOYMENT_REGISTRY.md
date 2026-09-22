@@ -22,7 +22,7 @@ URL を変更してはならない。
 
 | Environment | Status | Script ID | Deployment ID | Web App URL | Notes |
 |---|---|---|---|---|---|
-| KUWANA | Production Active | `15Nr43ftSF2vKgq-aX-NbkQrPijKaUIG-y1QwrVvEQfqwXcovT6Qg9mdx` | `AKfycbw69CcF7Ktb711lIYhmHSgR0iqTOuoGF_gElWsWcxJzZU3uR595me62t6lAgcUZAnFyOA` | `https://script.google.com/macros/s/AKfycbw69CcF7Ktb711lIYhmHSgR0iqTOuoGF_gElWsWcxJzZU3uR595me62t6lAgcUZAnFyOA/exec` | 三重県桑名市 本番稼働環境 |
+| UNIVERSAL_BASE | Standalone Template (Unset) | `UNSET` | `UNSET` | `UNSET` | 汎用エンジンテンプレート（未接続） |
 
 ---
 
@@ -30,7 +30,7 @@ URL を変更してはならない。
 
 | District | Role | Spreadsheet ID | Spreadsheet Name | Status |
 |---|---|---|---|---|
-| KUWANA | 新地区本番稼働 | `1mk346cjH6JhrYeVKye6ZyfmHXaXpRFO-FJ1BGa0WQIw` | `KUWANA` | 本番スプレッドシート配備完了 |
+| UNIVERSAL_BASE | テンプレート | `UNSET` | `UNSET` | 未接続 |
 
 ---
 

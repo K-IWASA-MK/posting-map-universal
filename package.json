@@ -9,6 +9,7 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "gate:minus-1": "node scripts/verify-gate-minus-1.mjs",
     "test:dashboard:gate": "node tests/dashboard_verification_gate.mjs",
     "liff:acquire": "node scripts/acquire-liff-id.mjs",
     "sync:config": "node scripts/sync-deployment-config.mjs",
