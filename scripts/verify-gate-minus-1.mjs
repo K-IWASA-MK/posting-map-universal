@@ -182,7 +182,7 @@ function recordCheck(id, name, pass, detail) {
     { label: 'KUWANA Drive Folder ID', pattern: '1gd4JFqyiUQ5PAASUSY4Vx9fXeJeiBFwL' },
     { label: 'KUWANA LIFF ID', pattern: '2010941735-x29F8IQ3' },
     { label: 'KUWANA CNAME Domain', pattern: 'kuwana.postingmap.jp' },
-    { label: 'Google Maps API Key', pattern: 'AIzaSyDFKa0UTelWzGZG48vTsDL8mWMipkhVlWE' }
+    { label: 'Google Maps API Key', regex: new RegExp('AIza' + 'Sy[A-Za-z0-9_-]{33}') }
   ];
 
   // 走査対象ディレクトリ（.quarantine_kuwana_snapshot, .git, node_modules は除外）
@@ -196,8 +196,10 @@ function recordCheck(id, name, pass, detail) {
     if (filePath.endsWith('verify-gate-minus-1.mjs')) return;
     const content = fs.readFileSync(filePath, 'utf8');
     for (const sig of forbiddenSignatures) {
-      if (content.includes(sig.pattern)) {
+      if (sig.pattern && content.includes(sig.pattern)) {
         foundViolations.push(`${filePath} contains ${sig.label} (${sig.pattern})`);
+      } else if (sig.regex && sig.regex.test(content)) {
+        foundViolations.push(`${filePath} contains ${sig.label} (pattern match)`);
       }
     }
   }
