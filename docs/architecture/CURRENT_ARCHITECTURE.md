@@ -1,28 +1,32 @@
 # POSTING MAP — 現行アーキテクチャ定義書
 *(Current Architecture Specification)*
 
-本書は、POSTING MAPの現行アーキテクチャを定義する**公式正本文書**である。  
-AI社員および開発者は、すべての設計・改修・検証・新地区展開において本書を最上位の技術的拠り所としなければならない。
+本書は、POSTING MAPの現行アーキテクチャを定義する技術定義書である。
+最上位の設計契約・憲法として **[01_DESIGN_CONTRACT.md](01_DESIGN_CONTRACT.md)** が存在し、本書はその下位において現行システムの構造を定義する。
 
 ---
 
 ## 1. 最上位原則 (Supreme Principles)
 
-### ① 単独アプリ・単独リポジトリ (Standalone Application & Standalone Repository)
-- POSTING MAPは、マルチテナント型や複数地区を単一コードで抱え込むモノリシックシステムではない。
-- **「1地区 = 1独立リポジトリ = 1独立アプリケーション = 1独立本番環境（DB・GAS・LIFF）」** を絶対原則とする。
-- 地区間のクロス参照、共通ブランチ、コード共有、リポジトリ結合は一切存在しない。
+### ① 単独アプリ・単独リポジトリ・単独ドメイン (Single App, Repository & Domain)
+- POSTING MAPは、単独アプリ・単独リポジトリ・単独ドメインを共通基盤とする **Universal Engine** である。
+- 地域ごとに別アプリ・別リポジトリ・別ドメインを作成・複製する設計は採用しない。
+- 地域間の差異（所属支部・活動対象地域・マスターデータ等）は、すべて **「データ」** として分離・吸収する。
 
-### ② 共通エンジンと地区データの完全分離 (Universal Engine vs. District Data)
-- **`active/` = 地区非依存 Universal Engine**
-  - 全地区で100%同一の実行プログラム（JavaScript / HTML / CSS / Standalone GAS）。
-  - 地区固有のコード改変を永久に禁止する（SHA-256ハッシュ完全固定）。
-- **`data/` = 地区固有データ & 設定 (District Data & Config)**
-  - 地区の住所マスター、境界GeoJSON、自治体定義、クライアント接続情報が集約される唯一のデータ領域。
+### ② 共通エンジンとデータ層の完全分離 (Universal Engine vs. Master Data)
+- **`active/` = 汎用 Universal Engine**
+  - 全地域で100%同一の実行プログラム（JavaScript / HTML / CSS / Standalone GAS）。
+  - 地域固有のコード改変・条件分岐の混入を永久に禁止する。
+- **`data/` = 地域データ & クライアント設定 (Regional Data & Config)**
+  - 住所マスター、境界GeoJSON、自治体定義、クライアント接続情報が集約されるデータ領域。
 
-### ③ 新地区展開モデル (COPY → data/交換)
-- 汎用POSTING MAPリポジトリを丸ごと複製（COPY）し、`data/` 配下の確定データ一式を新地区用に交換することで、新たな独立アプリケーションとして成立・稼働させる。
-- 複製後に `active/` 配下のプログラムを1行も改変してはならない。
+### ③ 活動関係とIdentityの正規導出
+- 活動関係モデル: `LINE User ID (verified) → 本人 (Staff Identity) → 所属支部 (Branch) → 支部の活動対象地域`
+- クライアントが送信する `staffId` や `branchId` を権限根拠として信用しない（サーバー側で安全に解決）。
+- 党員個人への固定担当エリア割り当ては存在しない。活動実績から個人ランキングを生成・可視化する。
+
+### ④ 【Legacy / Historical】旧第1世代アーキテクチャ（地区物理複製モデル）の廃止
+- *※旧モデル記録: かつて採用されていた「1地区 = 1独立リポジトリ = 1独立アプリケーション（物理COPY → data/交換）」は、コードベースの肥大化と管理負債を招くため、第2世代（Universal Engine）において完全に廃止された。新地域への展開においてリポジトリを物理複製してはならない。*
 
 ---
 
@@ -145,26 +149,27 @@ Hアプリの「保有チラシ」機能において、チラシ保管場所（�
 ## 4. 外部リソースとデプロイメントメタデータ
 
 ### 1. 外部独立リソース (External Resources)
-新地区を立ち上げる際、外部クラウド上に以下の独立リソースを新規作成する：
-1. **Googleスプレッドシート**: タイトルを新地区ID（例: `MIE-KAMEYAMA`）として新規作成（Pure DB）。
-2. **Google Driveフォルダ**: 新地区の写真保存用フォルダを作成。
-3. **LINE Developers**: 新地区専用チャネルにて LIFF アプリを発行。
-4. **Standalone GAS プロジェクト**: `clasp create --type standalone` で新規作成。
+Universal POSTING MAP は以下の外部クラウドインフラと連携する：
+1. **Googleスプレッドシート**: Pure DB（スクリプト内包なし・トリガー依存なし）。
+2. **Google Driveフォルダ**: 写真・添付データ等の保管フォルダ。
+3. **LINE Developers**: LIFF アプリおよび本人性確認。
+4. **Standalone GAS プロジェクト**: APIサーバーとして独立配備。
 
 ### 2. Deployment Metadata (`deployment.json`)
-- 新地区の外部リソース物理ID（`districtId`, `spreadsheetId`, `storageFolderId`, `webAppUrl`, `liffId`）を保持するローカル管理台帳。
-- Git追跡からは除外され、テンプレート `deployment.template.json` のみがリポジトリに保持される。
-- ブラウザやGAS実行エンジンはこのファイルを直接読まない（`data/config.js` および `Script Properties` への同期元としてのみ機能）。
+- インフラ接続の物理ID（`scriptId`, `deploymentId`, `webAppUrl`, `spreadsheetId`, `storageFolderId`, `productionLiffUrl`）を保持するローカル設定ファイル（Git追跡除外）。
+- テンプレート `deployment.template.json` のみがリポジトリに保持される。
 
 ---
 
-## 5. 新地区展開の不可侵原則 (District Deployment Invariants)
+## 5. Universal アーキテクチャの不可侵原則 (Universal Architecture Invariants)
 
-新地区展開プロセスにおいて、以下の原則はいかなる例外もなく遵守されなければならない：
+Universal POSTING MAP の運用・開発において、以下の原則はいかなる例外もなく遵守されなければならない：
 
 1. **`active/` ゼロ改変原則**:  
-   COPYおよび新地区データ投入後、`git diff active/` は常に 0 バイトであり、全 54 ファイルの SHA-256 ハッシュは 100% 一致しなければならない。
-2. **リポジトリ完全独立原則**:  
-   親機リポジトリとの Git 共有、他地区ブランチの作成、クロス地区マージは絶対禁止。
-3. **本番リソース完全遮断原則**:  
-   他地区のスプレッドシート、GAS、Drive、LIFFへのアクセス・参照・誤爆を物理的に遮断する。
+   地域展開や機能追加において、地域固有のハードコードや分岐を `active/` 内に混入させてはならない。
+2. **コード複製禁止原則**:
+   地域展開のためにリポジトリの複製、ブランチ分岐、アプリの物理複製を行ってはならない。地域差はすべてデータ層で吸収する。
+3. **リポジトリ境界絶対遵守原則**:
+   作業中のリポジトリ以外を参照・探索・比較しない。他地区のコードやデータを推測で流用しない。
+4. **【Legacy / Historical】旧新地区展開パイプラインの扱い**:
+   *旧複製スクリプト群（`district-deployment/workflow.md`, `check-pre-copy-purity.mjs` 等）は、第1世代（物理コピー方式）の過去遺産（DEPRECATED）であり、Universal POSTING MAP の通常運用・開発パイプラインからは切り離されている。*
