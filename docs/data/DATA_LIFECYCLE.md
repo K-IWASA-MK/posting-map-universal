@@ -268,3 +268,66 @@ RankingSummary (個人ランキング)
    - 1.0MBのGeoJSONを低スペック端末向けに軽量化する際の具体的許容誤差。
 5. **過去選挙実績データのUI連携**:
    - `election_history.json` の活動画面での表示要否。
+
+---
+
+## 6. 新地区スプレッドシート（DB）の正規ライフサイクル (District Database Lifecycle)
+
+親Standalone GAS 1本化（Universal Engine）において、新地区の独立したスプレッドシート（DB）を安全に立ち上げ、運用へ投入するための正規ライフサイクル（9段階プロトコル）を規定する。
+
+```text
+① テンプレート原本複製
+       ↓
+② 03_BRANCH フォルダへ配置
+       ↓
+③ SYSTEM_INFO 初期化
+       ↓
+④ 地区データ投入 (町丁目マスター原本等)
+       ↓
+⑤ DISTRICT_REGISTRY 登録 (親GAS Script Properties)
+       ↓
+⑥ 接続確認 (親GASからの openById 疎通)
+       ↓
+⑦ API 疎通確認 (Web App エンドポイント経由の getSystemSummary 応答)
+       ↓
+⑧ LINE / LIFF 側 districtId 設定確認 (data/config.js との突合)
+       ↓
+⑨ 実機確認 (Hアプリ・Dashboard での画面・活動確認)
+       ↓
+【正式稼働 Operational DB】
+```
+
+### (1) 正規9段階プロトコルの詳細
+
+| 段階 | 工程名 | 実行主体 | 実施内容 | 完了条件 |
+| :--- | :--- | :--- | :--- | :--- |
+| **①** | テンプレート複製 | 管理者 / サービスアカウント | 公式原本 `POSTING_MAP_EMPTY_TEMPLATE` を複製する。※既存地区本番DBの複製は永久禁止。 | コピー完了スプレッドシートの生成 |
+| **②** | 03_BRANCH配置 | 管理者 / サービスアカウント | Google Drive の公式保管場所 `03_BRANCH` フォルダ配下にスプレッドシートを格納・命名（例: `OKAYAMA-01`）。 | 指定フォルダへの安全な配置 |
+| **③** | SYSTEM_INFO初期化 | 管理者 / スクリプト | 第1シート `SYSTEM_INFO` に地区名、契約終了日、管理パスワード等の初期値を書き込む。 | 地区名がスプレッドシート名と完全一致 |
+| **④** | 地区データ投入 | 管理者 / ツール | 当該地区の `address_master.csv` を基に原本シートへ町丁目行データを投入する。 | 原本行数とCSV町丁目数が完全一致 |
+| **⑤** | REGISTRY登録 | 管理者 (Script Properties) | 親GASの `DISTRICT_REGISTRY` に `districtId: spreadsheetId` のエントリを追加する。 | JSONパース可能かつキー・値が正常永続化 |
+| **⑥** | 接続確認 | 管理者 / 診断スクリプト | 親GAS環境から `SpreadsheetApp.openById(ssId)` で対象スプレッドシートが開けることを確認。 | 例外なしでスプレッドシートオブジェクト取得 |
+| **⑦** | API疎通確認 | 管理者 / curl / テスト | Web App URL に対して `{ action: "getSystemSummary", districtId: "..." }` を投げ、200 OK を確認。 | 正常な JSON サマリ応答 |
+| **⑧** | クライアント設定確認 | 管理者 / フロントエンド | 当該地区の `data/config.js` の `districtId` が登録名と 1 文字の狂いもなく一致することを確認。 | 設定値の完全一致 |
+| **⑨** | 実機確認 | 管理者 / 検品者 | ブラウザ / LINE 実機で Hアプリ・Dashboard を開き、ピン表示および動作を確認。 | 検品チェックリスト全項目 PASS |
+
+### (2) 二段階SSOT境界（DISTRICT_REGISTRY と SYSTEM_INFO）
+
+地区DBの管理において、二重管理を防ぎつつ確実な整合性を保つため、以下の二段階検証境界を厳格に順守する。
+
+```text
+【第1段階: 接続解決SSOT】
+  親GAS Script Properties: DISTRICT_REGISTRY
+      ├─ 役割: 「どのSpreadsheetか（接続先ID）」の唯一のSSOT
+      └─ 解決: districtId ➔ Spreadsheet ID
+           │
+           ▼ (openById)
+【第2段階: 実体状態SSOT】
+  対象Spreadsheet: SYSTEM_INFO シート
+      ├─ 役割: 「そのSpreadsheetは何地区で、利用可能か」の唯一のSSOT
+      ├─ 照合: SYSTEM_INFO 内の地区名 === リクエストの districtId (取り違え防止)
+      └─ 判定: 契約終了日 >= 現在日 (契約有効性判定)
+           │
+           ▼
+      [二重検証完了 ➔ 業務処理実行]
+```

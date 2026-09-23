@@ -19,8 +19,8 @@ if (typeof FlyerService === 'undefined') {
       return FlyerService.instance;
     }
 
-    getFlyerStock(requestLineUserId = "") {
-      return this.repository.findStockPayload(requestLineUserId);
+    getFlyerStock(requestLineUserId = "", districtId = "") {
+      return this.repository.findStockPayload(requestLineUserId, districtId);
     }
 
     updateFlyerStock(location, count, staffName, staffId, lineUserId = "") {

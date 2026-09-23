@@ -19,15 +19,15 @@ if (typeof FlyerRepository === 'undefined') {
       return FlyerRepository.instance;
     }
 
-    getStorageSheet() {
+    getStorageSheet(districtId = "") {
       if (typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance) {
-        return MonthlySheetResolver.getInstance().getCurrentSheet("flyer");
+        return MonthlySheetResolver.getInstance().getCurrentSheet("flyer", districtId);
       }
       return null;
     }
 
-    findAllStocks(requestLineUserId = "") {
-      const s = this.getStorageSheet();
+    findAllStocks(requestLineUserId = "", districtId = "") {
+      const s = this.getStorageSheet(districtId);
       if (!s) return [];
 
       const lastRow = s.getLastRow();
@@ -52,8 +52,8 @@ if (typeof FlyerRepository === 'undefined') {
       });
     }
 
-    findStockPayload(requestLineUserId = "") {
-      const stocks = this.findAllStocks(requestLineUserId);
+    findStockPayload(requestLineUserId = "", districtId = "") {
+      const stocks = this.findAllStocks(requestLineUserId, districtId);
       let myStock = null;
       for (let i = 0; i < stocks.length; i++) {
         if (stocks[i].isMe) {

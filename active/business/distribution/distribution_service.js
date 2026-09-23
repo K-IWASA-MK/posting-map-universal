@@ -87,16 +87,16 @@ if (typeof DistributionService === 'undefined') {
       }
     }
 
-    getDeliveryStats() {
-      return this.repository.fetchDeliveryStats();
+    getDeliveryStats(districtId = "") {
+      return this.repository.fetchDeliveryStats(districtId);
     }
 
-    getRankingData(requestLineUserId = "") {
-      return this.repository.fetchRankingData(requestLineUserId);
+    getRankingData(requestLineUserId = "", districtId = "") {
+      return this.repository.fetchRankingData(requestLineUserId, districtId);
     }
 
-    getRankingPayload(requestLineUserId = "") {
-      return this.repository.fetchRankingPayload(requestLineUserId);
+    getRankingPayload(requestLineUserId = "", districtId = "") {
+      return this.repository.fetchRankingPayload(requestLineUserId, districtId);
     }
   };
   DistributionService.instance = null;

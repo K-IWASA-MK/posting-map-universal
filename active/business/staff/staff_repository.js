@@ -28,16 +28,16 @@ if (typeof StaffRepository === 'undefined') {
       return StaffRepository.instance;
     }
 
-    getRosterSheet() {
+    getRosterSheet(districtId = "") {
       if (typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance) {
-        return MonthlySheetResolver.getInstance().getCurrentSheet("staff");
+        return MonthlySheetResolver.getInstance().getCurrentSheet("staff", districtId);
       }
       return null;
     }
 
-    findByLineUserId(lineUserId) {
+    findByLineUserId(lineUserId, districtId = "") {
       if (!lineUserId) return null;
-      const sheet = this.getRosterSheet();
+      const sheet = this.getRosterSheet(districtId);
       if (!sheet) return null;
 
       const lastRow = sheet.getLastRow();

@@ -16,7 +16,7 @@
  */
 class SpreadsheetResolver {
   constructor() {
-    this.cachedSpreadsheet = null;
+    this.spreadsheetCacheByDistrict = {};
   }
 
   static getInstance() {
@@ -26,64 +26,118 @@ class SpreadsheetResolver {
     return SpreadsheetResolver.instance;
   }
 
-  getSpreadsheetId() {
+  getSpreadsheetId(districtId) {
+    const cleanDistrictId = String(districtId || "").trim().toUpperCase();
     try {
       const props = PropertiesService.getScriptProperties();
-      return props.getProperty("TARGET_SPREADSHEET_ID") || props.getProperty("SPREADSHEET_ID") || "";
-    } catch (e) {
+      const registryRaw = props.getProperty("DISTRICT_REGISTRY");
+
+      if (registryRaw) {
+        let registry = {};
+        try {
+          registry = JSON.parse(registryRaw);
+        } catch (errP) {
+          console.error("[SpreadsheetResolver] Failed to parse DISTRICT_REGISTRY JSON:", errP);
+          throw new Error("[SpreadsheetResolver] DISTRICT_REGISTRY is corrupted.");
+        }
+
+        if (!cleanDistrictId) {
+          throw new Error("[SpreadsheetResolver] districtId is required for multi-district routing. No fallback allowed.");
+        }
+
+        const normalizedKey = Object.keys(registry).find(k => k.trim().toUpperCase() === cleanDistrictId);
+        if (normalizedKey && registry[normalizedKey]) {
+          return String(registry[normalizedKey]).trim();
+        }
+
+        throw new Error(`[SpreadsheetResolver] District "${cleanDistrictId}" not found in DISTRICT_REGISTRY.`);
+      }
+
+      // レジストリ未設定の完全単一旧環境に対する後方互換のみ
+      const legacyId = props.getProperty("TARGET_SPREADSHEET_ID") || props.getProperty("SPREADSHEET_ID") || "";
+      if (legacyId) {
+        return legacyId;
+      }
       return "";
+    } catch (e) {
+      throw e;
     }
   }
 
-  getDistrictId() {
-    try {
-      const props = PropertiesService.getScriptProperties();
-      return props.getProperty("DISTRICT_ID") || "";
-    } catch (e) {
-      return "";
-    }
-  }
-
-  getSpreadsheet() {
-    if (this.cachedSpreadsheet) {
-      return this.cachedSpreadsheet;
+  verifyIntegrityGuard(ss, districtId) {
+    if (!ss || !districtId) return;
+    const cleanDistrictId = String(districtId).trim().toUpperCase();
+    const sheet = ss.getSheetByName("SYSTEM_INFO");
+    if (!sheet) {
+      throw new Error(`[SpreadsheetResolver] SYSTEM_INFO sheet is missing in spreadsheet "${ss.getName()}".`);
     }
 
-    const ssId = this.getSpreadsheetId();
-    if (ssId) {
-      try {
-        this.cachedSpreadsheet = SpreadsheetApp.openById(ssId);
-        return this.cachedSpreadsheet;
-      } catch (err) {
-        console.error(`[SpreadsheetResolver] Failed to open spreadsheet by ID "${ssId}":`, err);
-        throw new Error(`[SpreadsheetResolver] Cannot open spreadsheet by ID (${ssId}): ${err.toString()}`);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      throw new Error(`[SpreadsheetResolver] SYSTEM_INFO sheet has no data rows in spreadsheet "${ss.getName()}".`);
+    }
+
+    const data = sheet.getRange(1, 1, lastRow, 2).getValues();
+    let sheetDistrictCode = "";
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][0] || "").trim() === "地区コード") {
+        sheetDistrictCode = String(data[i][1] || "").trim().toUpperCase();
+        break;
       }
     }
 
-    // TARGET_SPREADSHEET_ID / SPREADSHEET_ID がない場合のみ、既存バウンド環境との後方互換
+    if (!sheetDistrictCode) {
+      throw new Error(`[SpreadsheetResolver] "地区コード" is missing in SYSTEM_INFO for spreadsheet "${ss.getName()}".`);
+    }
+
+    if (sheetDistrictCode !== cleanDistrictId) {
+      console.error(`[SpreadsheetResolver] DISTRICT_MISMATCH: requested "${cleanDistrictId}" !== sheet code "${sheetDistrictCode}"`);
+      throw new Error(`[SpreadsheetResolver] DISTRICT_MISMATCH: Requested districtId "${cleanDistrictId}" does not match spreadsheet SYSTEM_INFO district code "${sheetDistrictCode}".`);
+    }
+  }
+
+  getSpreadsheet(districtId) {
+    const cleanDistrictId = String(districtId || "").trim().toUpperCase();
+    if (cleanDistrictId && this.spreadsheetCacheByDistrict[cleanDistrictId]) {
+      return this.spreadsheetCacheByDistrict[cleanDistrictId];
+    }
+
+    const ssId = this.getSpreadsheetId(cleanDistrictId);
+    if (ssId) {
+      try {
+        const ss = SpreadsheetApp.openById(ssId);
+        if (cleanDistrictId) {
+          this.verifyIntegrityGuard(ss, cleanDistrictId);
+          this.spreadsheetCacheByDistrict[cleanDistrictId] = ss;
+        }
+        return ss;
+      } catch (err) {
+        console.error(`[SpreadsheetResolver] Failed to open spreadsheet by ID "${ssId}":`, err);
+        throw err;
+      }
+    }
+
     if (typeof SpreadsheetApp !== 'undefined' && typeof SpreadsheetApp.getActiveSpreadsheet === 'function') {
       try {
         const activeSs = SpreadsheetApp.getActiveSpreadsheet();
         if (activeSs && activeSs.getId()) {
-          this.cachedSpreadsheet = activeSs;
-          return this.cachedSpreadsheet;
+          return activeSs;
         }
       } catch (e) {}
     }
 
-    console.error('[SpreadsheetResolver] Target spreadsheet cannot be resolved. TARGET_SPREADSHEET_ID / SPREADSHEET_ID is missing.');
-    throw new Error('[SpreadsheetResolver] Target spreadsheet cannot be resolved. Neither TARGET_SPREADSHEET_ID nor SPREADSHEET_ID is configured in Script Properties, and no active spreadsheet is available.');
+    throw new Error('[SpreadsheetResolver] Target spreadsheet cannot be resolved.');
   }
 
   clearCache() {
-    this.cachedSpreadsheet = null;
+    this.spreadsheetCacheByDistrict = {};
   }
 }
 
 SpreadsheetResolver.instance = null;
 
-function getSS() {
-  return SpreadsheetResolver.getInstance().getSpreadsheet();
+function getSS(districtId) {
+  return SpreadsheetResolver.getInstance().getSpreadsheet(districtId);
 }
 
 class SpreadsheetBatchReader {

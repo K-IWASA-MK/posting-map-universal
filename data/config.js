@@ -1,5 +1,6 @@
 window.PMS_CLIENT_CONFIG = {
   version: "1.0.1",
+  districtId: "KUWANA",
   status: "ACTIVE_DEVELOPMENT",
   environment: "production",
   api: {

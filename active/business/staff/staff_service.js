@@ -19,11 +19,11 @@ if (typeof StaffService === 'undefined') {
       return StaffService.instance;
     }
 
-    resolveStaffIdentity(lineUserId) {
+    resolveStaffIdentity(lineUserId, districtId = "") {
       if (!lineUserId) {
         return StaffIdentity.notFound(lineUserId);
       }
-      const staff = this.repository.findByLineUserId(lineUserId);
+      const staff = this.repository.findByLineUserId(lineUserId, districtId);
       if (staff) {
         return StaffIdentity.found(staff.id, staff.name, staff.lineUserId);
       }

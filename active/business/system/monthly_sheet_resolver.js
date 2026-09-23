@@ -56,13 +56,26 @@
      * 当月Sheetオブジェクトを取得する
      * 未生成時は null を返す（自動生成は絶対に行わない）
      */
-    getCurrentSheet(type, date = new Date()) {
+    getCurrentSheet(type, arg2, arg3) {
+      let date = new Date();
+      let districtId = "";
+      if (typeof arg2 === 'string') {
+        districtId = arg2;
+      } else if (arg2 instanceof Date) {
+        date = arg2;
+        if (typeof arg3 === 'string') {
+          districtId = arg3;
+        }
+      } else if (typeof arg3 === 'string') {
+        districtId = arg3;
+      }
+
       const sheetName = this.getSheetName(type, date);
       if (!sheetName) return null;
 
       let ss = null;
       if (typeof getSS === 'function') {
-        ss = getSS();
+        ss = getSS(districtId);
       } else if (typeof SpreadsheetApp !== 'undefined' && typeof SpreadsheetApp.getActiveSpreadsheet === 'function') {
         ss = SpreadsheetApp.getActiveSpreadsheet();
       }

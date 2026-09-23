@@ -151,8 +151,10 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  const districtId = String((params && params.districtId) || "").trim();
+
   if (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
-    const contract = SystemInfoService.getInstance().getContractStatus();
+    const contract = SystemInfoService.getInstance().getContractStatus(null, new Date(), districtId);
     if (contract.isExpired) {
       return ContentService.createTextOutput(JSON.stringify({
         success: false,
@@ -173,7 +175,7 @@ function doGet(e) {
     const auth = authenticateRequest(params);
     e.user = auth.success ? auth.user : null;
   }
-  const res = processGetActionLegacy(action, e);
+  const res = processGetActionLegacy(action, e, districtId);
   if (res && typeof res.setMimeType === 'function') {
     return res;
   }
@@ -185,12 +187,12 @@ function doGet(e) {
 /**
  * 従来のGETリクエストの処理（後方互換用）
  */
-function processGetActionLegacy(action, e) {
+function processGetActionLegacy(action, e, districtId = "") {
   let response;
   switch (action) {
       case 'getDashboardData':
       case 'getSystemSummary':
-        response = typeof SystemSummaryService !== 'undefined' ? SystemSummaryService.getInstance().getSystemSummary() : { success: true, ...getDashboardData() };
+        response = typeof SystemSummaryService !== 'undefined' ? SystemSummaryService.getInstance().getSystemSummary(districtId) : { success: true, ...getDashboardData() };
         break;
       case 'getTier1':
         response = typeof Tier1Service !== 'undefined' ? Tier1Service.getInstance().getTier1() : { success: false };
@@ -201,7 +203,7 @@ function processGetActionLegacy(action, e) {
           const targetId = reqParam.spreadsheetId;
           const ss = targetId
             ? SpreadsheetApp.openById(targetId)
-            : (typeof getSS === 'function' ? getSS() : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null));
+            : (typeof getSS === 'function' ? getSS(districtId) : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null));
           if (!ss) {
             response = { success: false, message: 'Spreadsheet unavailable' };
           } else {
@@ -319,6 +321,34 @@ function doPost(e) {
     } catch (errJson) {}
   }
   const action = (postData && postData.action) || params.action || (e && e.parameter && e.parameter.action) || "";
+  const districtId = String((postData && postData.districtId) || (params && params.districtId) || "").trim();
+
+  const isManagementAction = [
+    'bootstrapEnvironment',
+    'provisionDistrict',
+    'createEmptyTemplate',
+    'createDistrictDatabase',
+    'syncSystemInfo',
+    'runIdentityMigration',
+    'registerOrValidateDevice',
+    'resetDeviceManagement',
+    'getDeviceStatus',
+    'issueMobilePairingToken',
+    'pairMobileDevice'
+  ].includes(action);
+
+  if (!isManagementAction) {
+    try {
+      const props = PropertiesService.getScriptProperties();
+      if (props.getProperty("DISTRICT_REGISTRY") && !districtId) {
+        return ContentService.createTextOutput(JSON.stringify({
+          success: false,
+          code: "MISSING_DISTRICT_ID",
+          message: "districtId is required for multi-district routing."
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    } catch (eProps) {}
+  }
 
   const isReadOnlyAction = [
     'getSystemSummary',
@@ -575,7 +605,7 @@ function doPost(e) {
   }
 
   if (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
-    const contract = SystemInfoService.getInstance().getContractStatus();
+    const contract = SystemInfoService.getInstance().getContractStatus(null, new Date(), districtId);
     if (contract.isExpired) {
       return ContentService.createTextOutput(JSON.stringify({
         success: false,
@@ -604,7 +634,7 @@ function doPost(e) {
       postData = { user: auth.success ? auth.user : null };
     }
   }
-  const res = processPostAction(action, postData, e);
+  const res = processPostAction(action, postData, e, districtId);
   if (res && typeof res.setMimeType === 'function') {
     return res;
   }
@@ -616,7 +646,7 @@ function doPost(e) {
 /**
  * 実際のPOSTアクション処理のスイッチケース
  */
-function processPostAction(action, postData, e) {
+function processPostAction(action, postData, e, districtId = "") {
   if (e && e.parameter && e.parameter.json) {
     try {
       const parsedJson = typeof e.parameter.json === 'string' ? JSON.parse(e.parameter.json) : e.parameter.json;
@@ -640,7 +670,7 @@ function processPostAction(action, postData, e) {
       return { success: false, code: "UNAUTHORIZED", message: "LINE User ID が取得できません。" };
     }
     const identity = (typeof StaffService !== 'undefined' && StaffService.getInstance)
-      ? StaffService.getInstance().resolveStaffIdentity(lineUserId)
+      ? StaffService.getInstance().resolveStaffIdentity(lineUserId, districtId)
       : null;
     if (!identity || !identity.found) {
       return {
@@ -668,7 +698,7 @@ function processPostAction(action, postData, e) {
         return { success: false, code: "UNAUTHORIZED", message: "LINE User ID が取得できません。" };
       }
       const identity = (typeof StaffService !== 'undefined' && StaffService.getInstance)
-        ? StaffService.getInstance().resolveStaffIdentity(lineUserId)
+        ? StaffService.getInstance().resolveStaffIdentity(lineUserId, districtId)
         : null;
       if (identity && identity.found) {
         return {
@@ -687,14 +717,14 @@ function processPostAction(action, postData, e) {
       }
     }
     case 'getSystemSummary':
-      return typeof SystemSummaryService !== 'undefined' ? SystemSummaryService.getInstance().getSystemSummary() : { success: false };
+      return typeof SystemSummaryService !== 'undefined' ? SystemSummaryService.getInstance().getSystemSummary(districtId) : { success: false };
     case 'getMapsApiKey':
       return { success: true, mapsApiKey: PropertiesService.getScriptProperties().getProperty('GOOGLE_MAPS_API_KEY') || "" };
     case 'getTier1':
       return typeof Tier1Service !== 'undefined' ? Tier1Service.getInstance().getTier1() : { success: false };
     case 'getSystemInfo':
       try {
-        const ss = typeof getSS === 'function' ? getSS() : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null);
+        const ss = typeof getSS === 'function' ? getSS(districtId) : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null);
         if (!ss) {
           return { success: false, message: 'Spreadsheet unavailable' };
         }
@@ -733,13 +763,13 @@ function processPostAction(action, postData, e) {
       }
 
     case 'getRanking': {
-      const rankPayload = DistributionService.getInstance().getRankingPayload(reqLineUserId);
+      const rankPayload = DistributionService.getInstance().getRankingPayload(reqLineUserId, districtId);
       return { success: true, mySummary: rankPayload.mySummary, ranking: rankPayload.ranking };
     }
     case 'getLatestDistribution':
       try {
         const records = typeof DistributionRepository !== 'undefined' && DistributionRepository.getInstance
-          ? DistributionRepository.getInstance().fetchLatestRecords(postData.limit || 20, reqLineUserId)
+          ? DistributionRepository.getInstance().fetchLatestRecords(postData.limit || 20, reqLineUserId, districtId)
           : [];
         return { success: true, records: records };
       } catch (err) {
@@ -800,7 +830,7 @@ function processPostAction(action, postData, e) {
     case 'resolveTransferRequest':
       return TransferService.getInstance().resolveTransferRequest(postData);
     case 'getFlyerStock': {
-      const stockPayload = FlyerService.getInstance().getFlyerStock(reqLineUserId);
+      const stockPayload = FlyerService.getInstance().getFlyerStock(reqLineUserId, districtId);
       return { success: true, myStock: stockPayload.myStock, stocks: stockPayload.stocks };
     }
     case 'getTransferRequests':
@@ -848,7 +878,7 @@ function processPostAction(action, postData, e) {
     case 'verifyManagerPassword':
       const postPwd = (postData && postData.password) || (e && e.parameter ? e.parameter.password : "");
       return typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance
-        ? SystemInfoService.getInstance().verifyManagerPassword(postPwd)
+        ? SystemInfoService.getInstance().verifyManagerPassword(postPwd, districtId)
         : { success: false, message: 'SystemInfoService not available' };
     default:
       return { success: false, message: 'Invalid POST action' };

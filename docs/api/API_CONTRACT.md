@@ -26,6 +26,7 @@
 4. [Authentication (認証アーキテクチャ)](#4-authentication-認証アーキテクチャ)
 5. [Identity Resolution (Identity強制解決)](#5-identity-resolution-identity強制解決)
 6. [Authorization (認可モデル)](#6-authorization-認可モデル)
+   - [6.1 District Routing & Authorization Boundary (地区ルーティングと認可境界)](#61-district-routing--authorization-boundary-地区ルーティングと認可境界)
 7. [Data Model (データモデル整合性)](#7-data-model-データモデル整合性)
 8. [DistributionRecord API (配布実績登録契約)](#8-distributionrecord-api-配布実績登録契約)
 9. [Ranking API (個人ランキング契約)](#9-ranking-api-個人ランキング契約)
@@ -190,6 +191,59 @@ Backend: ペイロード強制上書き (クライアント送信値を破棄)
 | **Unregistered Staff** | `registerStaff` (名簿初回登録) | 有効な `liffToken` (LINE検証成功) | `UNAUTHORIZED` (無効/期限切れトークン) |
 | **Active Staff (配布員)** | `submitDistribution`, `updateRecordWithGPSPhoto`, `getRanking`, `getFlyerStock`, `updateFlyerStock`, `requestFlyerTransfer` | 有効な `liffToken` ＋ 名簿登録済み (`found === true`) | `NOT_REGISTERED` (名簿未登録) / `UNAUTHORIZED` |
 | **Manager (管理者)** | `getRoster`, `getTransferRequests`, `verifyManagerPassword` | 管理者パスワード検証、または管理用セッション | `FORBIDDEN` / `UNAUTHORIZED` |
+
+---
+
+## 6.1 District Routing & Authorization Boundary (地区ルーティングと認可境界)
+
+単一の親Standalone GAS（単一Web App URL）から複数地区のSpreadsheet（DB）へアクセスを振り分けるマルチテナント運用において、**ルーティング（どのDBを開くか）と認証・認可（誰がアクセスしてよいか）を完全に分離**する。
+
+```text
+Request 受信
+    ↓
+districtId 取得 (Routing Hint: 対象DB候補の指定)
+    ↓
+DISTRICT_REGISTRY による対象DB（Spreadsheet ID）候補の解決
+    ↓
+LINE Access Token 検証 ➔ 認証済み lineUserId 取得 (Identity Proof: 本人性証明)
+    ↓
+対象DB（名簿シート）との照合 ➔ 地区所属・利用資格確認 (Authorization: 認可判定)
+    ↓
+認可 PASS ➔ Spreadsheet 業務操作 / 認可 DENY ➔ 処理即時遮断
+```
+
+### (1) districtId は「Routing Hint」であり認証情報ではない
+- クライアントが送信する `districtId`（例: `"KUWANA"`）は、あくまで「どのDBを候補として調べるか」の指定に過ぎない。
+- `districtId` を送信したこと自体を信頼して対象スプレッドシートへの書き込み・読み取り権限を与える構造は絶対に採用しない。
+
+### (2) 認可境界の実装要件
+- 認証済み `lineUserId` と対象地区DBの名簿照合を認可境界として実装し、地区越境アクセスを拒否する。
+- 業務系アクション（配布登録、在庫更新、ランキング取得等）の実行時、対象スプレッドシートの名簿に認証済み `lineUserId` が存在しない場合は、直ちに処理を停止し拒絶レスポンスを返却する。
+
+### (3) 認可検証マトリクス (テスト検証条件)
+実機・単体テストにおいて、以下の5大条件をすべて満たすことを実証する。
+
+| テストシナリオ | LINE Token | 本人所属地区 | 指定 districtId | 認可判定 | レスポンスコード | 期待挙動 |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **正当アクセス** | 正常 (User A) | District A | District A | **PASS** | `200 OK` | 正常に業務処理を完了・永続化 |
+| **地区越境アクセス** | 正常 (User A) | District A | District B | **DENY** | `NOT_REGISTERED` | 越境操作を拒絶し、DB書き込み遮断 |
+| **名簿未登録ユーザー**| 正常 (Unknown) | なし | District A | **DENY** | `NOT_REGISTERED` | 初回登録画面へ誘導 |
+| **不正/失効トークン** | 無効/失効 | - | District A | **DENY** | `UNAUTHORIZED` | 認証エラーとして即時拒絶 |
+| **未知の地区ID** | 正常 (User A) | District A | Unknown-99 | **DENY** | `DISTRICT_NOT_FOUND` | ルーティング失敗として即時拒絶 |
+
+### (4) 推奨リクエスト構造
+```json
+{
+  "action": "submitDistribution",
+  "districtId": "KUWANA",
+  "requestId": "550e8400-e29b-41d4-a716-446655440000",
+  "liffToken": "eyJhbGciOi...",
+  "rowId": 142,
+  "count": 120
+}
+```
+※ `districtId` は Routing Hint、`liffToken` は Identity Credential として扱い、Backend 側で分離検証する。
+
 
 ---
 

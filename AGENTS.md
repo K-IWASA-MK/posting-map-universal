@@ -44,3 +44,9 @@ AI社員は作業フェーズに応じて、必ず以下の詳細規程・ワー
 - 権限境界・Scope最小化・詳細禁止事項: [.agents/rules/agent-authority.md](.agents/rules/agent-authority.md)
 - AI社員基盤・アーキテクチャ体系: [docs/ai-foundation.md](docs/ai-foundation.md)
 - Legacy district-deployment workflow (.agents/workflows/district-deployment/workflow.md) is deprecated and must not be used.
+
+## 8. 秘密情報ファイルの不可侵・非表示原則 (Confidentiality & Secret Protection) — ABSOLUTE
+- `.env`, `.secrets/*`, `*.json`（サービスアカウント等の鍵ファイル）, `*.pem` 等の機密ファイルを、`view_file`、`cat`、`read_file`、スクリプト実行等によりコンテキストやチャット画面・ログに展開・出力することを一切禁止する。
+- 秘密情報ファイル（秘密鍵、APIシークレット、トークン、パスワード、認証情報）の生データをコミット・プッシュ・外部共有・チャット表示してはならない。
+- 機密設定の存在確認や検証が必要な場合は、生テキストを展開せず、キー存在有無判定（`EXISTS / SECURED / OK`）や完全マスク処理（`[REDACTED]`）のみにとどめること。
+- 機密ファイルはプロジェクト直下の `.secrets/` 等に配置し、必ず `.gitignore` で除外した上で最小権限（`chmod 600`）でローカル管理すること。

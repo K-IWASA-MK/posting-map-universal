@@ -324,6 +324,10 @@ async function fetchStaticDataFile(filename) {
 
 async function callApiPost(action, payload = {}, options = {}) {
   const timeoutMs = options.timeoutMs || 25000;
+  const districtId = (typeof window !== 'undefined' && window.PMS_CLIENT_CONFIG && window.PMS_CLIENT_CONFIG.districtId) || "";
+  if (districtId && !payload.districtId) {
+    payload.districtId = districtId;
+  }
   const url = `${getApiUrl()}?action=${encodeURIComponent(action)}&_t=${Date.now()}`;
   const body = JSON.stringify({ action, ...payload });
 

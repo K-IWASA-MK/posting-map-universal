@@ -19,17 +19,17 @@ if (typeof DistributionRepository === 'undefined') {
       return DistributionRepository.instance;
     }
 
-    getSS() {
+    getSS(districtId = "") {
       if (typeof SpreadsheetAdapter !== 'undefined' && typeof SpreadsheetAdapter.getSS === 'function') {
-        return SpreadsheetAdapter.getSS();
+        return SpreadsheetAdapter.getSS(districtId);
       } else if (typeof getSS === 'function') {
-        return getSS();
+        return getSS(districtId);
       }
       return null;
     }
 
-    fetchDeliveryStats() {
-      const sheet = this.getDistributionSheet();
+    fetchDeliveryStats(districtId = "") {
+      const sheet = this.getDistributionSheet(districtId);
       if (!sheet) return { totalDistributed: 0, areasCount: 0 };
 
       let totalDistributed = 0;
@@ -53,15 +53,15 @@ if (typeof DistributionRepository === 'undefined') {
       };
     }
 
-    getDistributionSheet() {
+    getDistributionSheet(districtId = "") {
       if (typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance) {
-        return MonthlySheetResolver.getInstance().getCurrentSheet("distribution");
+        return MonthlySheetResolver.getInstance().getCurrentSheet("distribution", districtId);
       }
       return null;
     }
 
-    fetchRankingData(requestLineUserId = "") {
-      const sheet = this.getDistributionSheet();
+    fetchRankingData(requestLineUserId = "", districtId = "") {
+      const sheet = this.getDistributionSheet(districtId);
       if (!sheet) return [];
 
       const lastRow = sheet.getLastRow();
@@ -172,8 +172,8 @@ if (typeof DistributionRepository === 'undefined') {
       });
     }
 
-    fetchRankingPayload(requestLineUserId = "") {
-      const ranking = this.fetchRankingData(requestLineUserId);
+    fetchRankingPayload(requestLineUserId = "", districtId = "") {
+      const ranking = this.fetchRankingData(requestLineUserId, districtId);
       let mySummary = null;
       for (let i = 0; i < ranking.length; i++) {
         if (ranking[i].isMe) {

@@ -14,7 +14,7 @@
       return SystemSummaryService.instance;
     }
 
-    getSystemSummary() {
+    getSystemSummary(districtId = "") {
       try {
         let totalDone = 0;
         let totalPoints = 0;
@@ -23,12 +23,12 @@
         // SSOT: Spreadsheetファイル名および実在シートから動的に総件数・完了数を取得
         try {
           if (typeof getSS === 'function') {
-            const ss = getSS();
+            const ss = getSS(districtId);
             if (ss) {
               districtName = ss.getName();
 
               const distSheet = (typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance)
-                ? MonthlySheetResolver.getInstance().getCurrentSheet("distribution")
+                ? MonthlySheetResolver.getInstance().getCurrentSheet("distribution", districtId)
                 : null;
               if (distSheet) {
                 const lastRow = distSheet.getLastRow();

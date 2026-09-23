@@ -24,6 +24,11 @@ async function callApiPost(action, payload = {}) {
   const MAX_RETRIES = 3;
   let delay = 1000;
 
+  const districtId = (typeof window !== 'undefined' && window.PMS_CLIENT_CONFIG && window.PMS_CLIENT_CONFIG.districtId) || "";
+  if (districtId && !payload.districtId) {
+    payload.districtId = districtId;
+  }
+
   const token = getLiffAuthToken();
   if (token) {
     payload.liffToken = token;

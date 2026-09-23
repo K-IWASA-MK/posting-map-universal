@@ -11,8 +11,8 @@
       return SystemInfoService.instance;
     }
 
-    getSS() {
-      if (typeof getSS === 'function') return getSS();
+    getSS(districtId = "") {
+      if (typeof getSS === 'function') return getSS(districtId);
       if (typeof SpreadsheetApp !== 'undefined' && SpreadsheetApp.getActiveSpreadsheet) {
         return SpreadsheetApp.getActiveSpreadsheet();
       }
@@ -87,12 +87,12 @@
       return this.generateRandomPin();
     }
 
-    verifyManagerPassword(inputPassword) {
+    verifyManagerPassword(inputPassword, districtId = "") {
       if (!inputPassword || typeof inputPassword !== 'string' || !inputPassword.trim()) {
         return { success: false, message: '認証コードを入力してください' };
       }
       try {
-        const ss = this.getSS();
+        const ss = this.getSS(districtId);
         const districtName = ss.getName();
         const sheet = ss.getSheetByName('SYSTEM_INFO');
         if (!sheet) {
@@ -125,9 +125,9 @@
       }
     }
 
-    getContractEndDate(existingSheet) {
+    getContractEndDate(existingSheet, districtId = "") {
       try {
-        const s = existingSheet || (this.getSS() ? this.getSS().getSheetByName('SYSTEM_INFO') : null);
+        const s = existingSheet || (this.getSS(districtId) ? this.getSS(districtId).getSheetByName('SYSTEM_INFO') : null);
         if (!s) return '';
         const lr = s.getLastRow();
         if (lr < 2) return '';
@@ -202,8 +202,8 @@
       return { success: true, contractEndDate: cleanDate };
     }
 
-    getContractStatus(existingSheet, now = new Date()) {
-      const endDateStr = this.getContractEndDate(existingSheet);
+    getContractStatus(existingSheet, now = new Date(), districtId = "") {
+      const endDateStr = this.getContractEndDate(existingSheet, districtId);
       if (!endDateStr) {
         return { status: 'ACTIVE', isExpired: false, endDate: '' };
       }
