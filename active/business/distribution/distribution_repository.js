@@ -195,8 +195,8 @@ if (typeof DistributionRepository === 'undefined') {
     /**
      * 最新の配布実績レコードを取得（SSOT配布実績固定マスターシートの全行から、D列タイムスタンプ降順で最大 limit 件）
      */
-    fetchLatestRecords(limit = 20, requestLineUserId = "") {
-      const sheet = this.getDistributionSheet();
+    fetchLatestRecords(limit = 20, requestLineUserId = "", districtId = "") {
+      const sheet = this.getDistributionSheet(districtId);
       if (!sheet) return [];
 
       const lastRow = sheet.getLastRow();

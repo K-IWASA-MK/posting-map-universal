@@ -9,19 +9,19 @@
       return TransferService.instance;
     }
 
-    getSS() {
+    getSS(districtId = "") {
       if (typeof getSS === 'function') {
-        return getSS();
+        return getSS(districtId);
       }
       if (typeof SpreadsheetAdapter !== 'undefined') {
-        return SpreadsheetAdapter.getInstance().getActiveSpreadsheet();
+        return SpreadsheetAdapter.getInstance().getSpreadsheet(districtId);
       }
       throw new Error("Active spreadsheet unavailable");
     }
 
-    getMonthlySheet(type) {
+    getMonthlySheet(type, districtId = "") {
       if (typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance) {
-        return MonthlySheetResolver.getInstance().getCurrentSheet(type);
+        return MonthlySheetResolver.getInstance().getCurrentSheet(type, districtId);
       }
       return null;
     }
@@ -275,8 +275,8 @@
       }
     }
 
-    getTransferRequests(requestLineUserId = "") {
-      const s = this.getMonthlySheet('transfer');
+    getTransferRequests(requestLineUserId = "", districtId = "") {
+      const s = this.getMonthlySheet('transfer', districtId);
       if (!s) return [];
       const lastRow = s.getLastRow();
       if (lastRow < 2) return [];

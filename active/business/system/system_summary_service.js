@@ -20,10 +20,12 @@
         let totalPoints = 0;
         let districtName = "";
 
+        let ss = null;
+
         // SSOT: Spreadsheetファイル名および実在シートから動的に総件数・完了数を取得
         try {
           if (typeof getSS === 'function') {
-            const ss = getSS(districtId);
+            ss = getSS(districtId);
             if (ss) {
               districtName = ss.getName();
 
@@ -62,13 +64,13 @@
         const percent = totalPoints > 0 ? Math.round((totalDone / totalPoints) * 100) : 0;
 
         const contract = (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance)
-          ? SystemInfoService.getInstance().getContractStatus()
+          ? SystemInfoService.getInstance().getContractStatus(ss ? ss.getSheetByName('SYSTEM_INFO') : null, new Date(), districtId)
           : { status: 'ACTIVE', isExpired: false, endDate: '' };
 
         if (contract.isExpired) {
           return {
             success: false,
-            code: 'CONTRACT_EXPIRED',
+            code: contract.code || 'CONTRACT_EXPIRED',
             districtName: districtName,
             total: totalPoints,
             done: totalDone,
@@ -77,7 +79,7 @@
             contractStatus: 'EXPIRED',
             contractEndDate: contract.endDate,
             isExpired: true,
-            message: '契約期間が終了しているため利用できません。'
+            message: contract.message || '契約期間が終了しているため利用できません。'
           };
         }
 

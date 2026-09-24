@@ -790,6 +790,140 @@ function processPostAction(action, postData, e, districtId = "") {
         };
       }
     }
+
+    case 'getDashboardSnapshot': {
+      const snapshot = {
+        success: true,
+        status: "SUCCESS",
+        districtId: districtId,
+        timestamp: new Date().toISOString(),
+        domains: {},
+        errors: {}
+      };
+
+      // 共通キャッシュ用 名簿データ（同一実行内での再読込排除）
+      let sharedRoster = null;
+      try {
+        if (typeof StaffService !== 'undefined' && StaffService.getInstance) {
+          sharedRoster = StaffService.getInstance().getRoster(districtId) || [];
+        }
+      } catch (eR) {}
+
+      // 1. Summary ドメイン
+      try {
+        const summaryData = typeof SystemSummaryService !== 'undefined'
+          ? SystemSummaryService.getInstance().getSystemSummary(districtId)
+          : { success: false, message: 'SystemSummaryService unavailable' };
+        snapshot.domains.summary = summaryData;
+        if (!summaryData.success) {
+          snapshot.status = "PARTIAL_SUCCESS";
+          snapshot.errors.summary = summaryData.message || "Summary fetch failed";
+        }
+      } catch (eSummary) {
+        snapshot.status = "PARTIAL_SUCCESS";
+        snapshot.domains.summary = { success: false, error: eSummary.toString() };
+        snapshot.errors.summary = eSummary.toString();
+      }
+
+      // 2. Flyer Stock ドメイン
+      let sharedStocks = [];
+      try {
+        if (typeof FlyerRepository !== 'undefined' && FlyerRepository.getInstance) {
+          sharedStocks = FlyerRepository.getInstance().findAllStocks("", districtId) || [];
+        }
+        const stockPayload = typeof FlyerService !== 'undefined' && FlyerService.getInstance
+          ? FlyerService.getInstance().getFlyerStock(reqLineUserId, districtId)
+          : { myStock: [], stocks: sharedStocks };
+        snapshot.domains.flyerStock = { success: true, myStock: stockPayload.myStock, stocks: stockPayload.stocks };
+      } catch (eStock) {
+        snapshot.status = "PARTIAL_SUCCESS";
+        snapshot.domains.flyerStock = { success: false, error: eStock.toString(), stocks: [] };
+        snapshot.errors.flyerStock = eStock.toString();
+      }
+
+      // 3. Ranking ドメイン
+      let sharedRanking = [];
+      try {
+        if (typeof DistributionRepository !== 'undefined' && DistributionRepository.getInstance) {
+          sharedRanking = DistributionRepository.getInstance().fetchRankingData(reqLineUserId, districtId, sharedRoster) || [];
+        }
+        const rankPayload = typeof DistributionService !== 'undefined' && DistributionService.getInstance
+          ? DistributionService.getInstance().getRankingPayload(reqLineUserId, districtId)
+          : { mySummary: null, ranking: sharedRanking };
+        snapshot.domains.ranking = { success: true, mySummary: rankPayload.mySummary, ranking: rankPayload.ranking };
+      } catch (eRank) {
+        snapshot.status = "PARTIAL_SUCCESS";
+        snapshot.domains.ranking = { success: false, error: eRank.toString(), ranking: [] };
+        snapshot.errors.ranking = eRank.toString();
+      }
+
+      // 4. Pin Status ドメイン
+      try {
+        const pinData = typeof PinStatusService !== 'undefined' && PinStatusService.getInstance
+          ? PinStatusService.getInstance().getStatus(districtId)
+          : { success: false, inProgress: [], completed: [] };
+        snapshot.domains.pinStatus = pinData;
+        if (!pinData.success) {
+          snapshot.status = "PARTIAL_SUCCESS";
+          snapshot.errors.pinStatus = pinData.message || "PinStatus fetch failed";
+        }
+      } catch (ePin) {
+        snapshot.status = "PARTIAL_SUCCESS";
+        snapshot.domains.pinStatus = { success: false, error: ePin.toString(), inProgress: [], completed: [] };
+        snapshot.errors.pinStatus = ePin.toString();
+      }
+
+      // 5. Roster ドメイン
+      try {
+        const rawRoster = sharedRoster || (typeof StaffService !== 'undefined' ? StaffService.getInstance().getRoster(districtId) : []);
+        const aggregatedRoster = (rawRoster || []).map(r => {
+          const staffStocks = (sharedStocks || []).filter(st => st.staffId === r.id);
+          const stockTotal = staffStocks.reduce((acc, st) => acc + (Number(st.count) || 0), 0);
+          const staffRank = (sharedRanking || []).find(rk => rk.staffId === r.id);
+          const deliveredTotal = staffRank ? Number(staffRank.count || 0) : 0;
+          return {
+            id: r.id,
+            name: r.name,
+            registeredAt: r.registeredAt,
+            stockTotal: stockTotal,
+            deliveredTotal: deliveredTotal
+          };
+        });
+        snapshot.domains.roster = { success: true, roster: aggregatedRoster };
+      } catch (eRoster) {
+        snapshot.status = "PARTIAL_SUCCESS";
+        snapshot.domains.roster = { success: false, error: eRoster.toString(), roster: [] };
+        snapshot.errors.roster = eRoster.toString();
+      }
+
+      // 6. Transfer Requests ドメイン
+      try {
+        const transferData = typeof TransferService !== 'undefined' && TransferService.getInstance
+          ? { success: true, requests: TransferService.getInstance().getTransferRequests(reqLineUserId, districtId) }
+          : { success: false, requests: [] };
+        snapshot.domains.transfer = transferData;
+      } catch (eTransfer) {
+        snapshot.status = "PARTIAL_SUCCESS";
+        snapshot.domains.transfer = { success: false, error: eTransfer.toString(), requests: [] };
+        snapshot.errors.transfer = eTransfer.toString();
+      }
+
+      // 7. Latest Distribution ドメイン
+      try {
+        const distLimit = (postData && postData.limit) ? Number(postData.limit) : 20;
+        const records = typeof DistributionRepository !== 'undefined' && DistributionRepository.getInstance
+          ? DistributionRepository.getInstance().fetchLatestRecords(distLimit, reqLineUserId, districtId)
+          : [];
+        snapshot.domains.latestDistribution = { success: true, records: records };
+      } catch (eLatest) {
+        snapshot.status = "PARTIAL_SUCCESS";
+        snapshot.domains.latestDistribution = { success: false, error: eLatest.toString(), records: [] };
+        snapshot.errors.latestDistribution = eLatest.toString();
+      }
+
+      return snapshot;
+    }
+
     case 'getSystemSummary':
       return typeof SystemSummaryService !== 'undefined' ? SystemSummaryService.getInstance().getSystemSummary(districtId) : { success: false };
     case 'getMapsApiKey':
@@ -850,7 +984,7 @@ function processPostAction(action, postData, e, districtId = "") {
         return { success: false, error: err.toString(), records: [] };
       }
     case 'getRoster': {
-      const rawRoster = StaffService.getInstance().getRoster();
+      const rawRoster = StaffService.getInstance().getRoster(districtId);
       let stocks = [];
       let ranking = [];
       try {
@@ -908,7 +1042,7 @@ function processPostAction(action, postData, e, districtId = "") {
       return { success: true, myStock: stockPayload.myStock, stocks: stockPayload.stocks };
     }
     case 'getTransferRequests':
-      return { success: true, requests: TransferService.getInstance().getTransferRequests(reqLineUserId) };
+      return { success: true, requests: TransferService.getInstance().getTransferRequests(reqLineUserId, districtId) };
     case 'updateFlyerStock':
       return FlyerService.getInstance().updateFlyerStock(
         postData.location,
@@ -918,7 +1052,7 @@ function processPostAction(action, postData, e, districtId = "") {
         postData.resolvedLineUserId || reqLineUserId
       );
     case 'getGlobalPinStatus':
-      return PinStatusService.getInstance().getStatus();
+      return PinStatusService.getInstance().getStatus(districtId);
     case 'getBulletinPosts':
       return typeof BulletinService !== 'undefined' && BulletinService.getInstance
         ? BulletinService.getInstance().getPosts(reqLineUserId)
@@ -932,7 +1066,7 @@ function processPostAction(action, postData, e, districtId = "") {
         ? BulletinService.getInstance().sendContact(postData)
         : { success: false, message: 'BulletinService not available' };
     case 'setPinInProgress':
-      return PinStatusService.getInstance().setInProgress(postData);
+      return PinStatusService.getInstance().setInProgress(postData, districtId);
     case 'provisionDistrict':
       const pToken = (postData && (postData.provisioningToken || (postData.options && postData.options.provisioningToken)));
       const pCheck = verifyProvisioningToken(pToken);

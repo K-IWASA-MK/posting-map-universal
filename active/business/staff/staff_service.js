@@ -117,8 +117,8 @@ if (typeof StaffService === 'undefined') {
       }
     }
 
-    getRoster() {
-      const sheet = this.repository.getRosterSheet();
+    getRoster(districtId = "") {
+      const sheet = this.repository.getRosterSheet(districtId);
       if (!sheet) return [];
       const lastRow = sheet.getLastRow();
       if (lastRow < 2) return [];

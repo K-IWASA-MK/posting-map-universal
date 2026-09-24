@@ -837,22 +837,33 @@ async function syncDashboardData() {
   if (_isSyncing) return;
   _isSyncing = true;
   try {
-    const summaryPromise = (DashboardState.summary && _isInitialSummaryFresh)
-      ? Promise.resolve(DashboardState.summary).then(summary => {
-          _isInitialSummaryFresh = false;
-          return summary;
-        })
-      : callApiPost('getSystemSummary').catch(e => ({ success: false, error: e.message }));
+    const districtId = (DashboardState && DashboardState.districtId) || (window.PMS_CLIENT_CONFIG && window.PMS_CLIENT_CONFIG.districtId) || "";
+    const snapshotRes = await callApiPost('getDashboardSnapshot', { districtId, limit: 20 })
+      .catch(e => ({ success: false, error: e.message }));
 
-    const [summaryRes, stockRes, rankRes, pinStatusRes, rosterRes, reqRes, latestDistRes] = await Promise.all([
-      summaryPromise,
-      callApiPost('getFlyerStock').catch(e => ({ success: false, error: e.message })),
-      callApiPost('getRanking').catch(e => ({ success: false, error: e.message })),
-      callApiPost('getGlobalPinStatus').catch(e => ({ success: false, error: e.message })),
-      callApiPost('getRoster').catch(e => ({ success: false, error: e.message })),
-      callApiPost('getTransferRequests').catch(e => ({ success: false, error: e.message })),
-      callApiPost('getLatestDistribution', { limit: 20 }).catch(e => ({ success: false, error: e.message }))
-    ]);
+    if (snapshotRes && (snapshotRes.code === 'CONTRACT_EXPIRED' || snapshotRes.code === 'CONTRACT_CHECK_FAILED')) {
+      _isDashboardInitialized = false;
+      showManagerPinGate();
+      const errorEl = document.getElementById('manager-pin-error');
+      if (errorEl) {
+        errorEl.textContent = snapshotRes.message || '契約期間が終了しているため利用できません。';
+      }
+      return;
+    }
+
+    if (!snapshotRes || !snapshotRes.domains) {
+      setSyncStatus(false);
+      return;
+    }
+
+    const domains = snapshotRes.domains;
+    const summaryRes = domains.summary;
+    const stockRes = domains.flyerStock;
+    const rankRes = domains.ranking;
+    const pinStatusRes = domains.pinStatus;
+    const rosterRes = domains.roster;
+    const reqRes = domains.transfer;
+    const latestDistRes = domains.latestDistribution;
 
     if (summaryRes && (summaryRes.code === 'CONTRACT_EXPIRED' || summaryRes.contractStatus === 'EXPIRED' || summaryRes.isExpired === true)) {
       _isDashboardInitialized = false;
@@ -870,6 +881,7 @@ async function syncDashboardData() {
     const isReqOk = reqRes && reqRes.success;
     const isLatestDistOk = latestDistRes && latestDistRes.success;
 
+    // 成功ドメインのみ上書き、失敗ドメインは既存表示を保持 (Partial Failure 設計)
     if (isSummaryOk) {
       DashboardState.summary = summaryRes;
     }
@@ -884,8 +896,6 @@ async function syncDashboardData() {
 
     if (isReqOk) {
       DashboardState.requests = reqRes.requests || [];
-    } else {
-      DashboardState.requests = [];
     }
 
     let pinStatusChanged = false;
@@ -930,8 +940,6 @@ async function syncDashboardData() {
 
     if (isRankOk) {
       DashboardState.ranking = rankRes.ranking || [];
-    } else {
-      DashboardState.ranking = [];
     }
 
     if (isLatestDistOk && Array.isArray(latestDistRes.records)) {

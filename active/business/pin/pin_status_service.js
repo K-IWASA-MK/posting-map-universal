@@ -9,16 +9,16 @@
       return PinStatusService.instance;
     }
 
-    getMonthlySheet(type) {
+    getMonthlySheet(type, districtId = "") {
       if (typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance) {
-        return MonthlySheetResolver.getInstance().getCurrentSheet(type);
+        return MonthlySheetResolver.getInstance().getCurrentSheet(type, districtId);
       }
       return null;
     }
 
-    getStatus() {
+    getStatus(districtId = "") {
       try {
-        let pinSheet = this.getMonthlySheet('pin');
+        let pinSheet = this.getMonthlySheet('pin', districtId);
         let inProgress = [];
         if (pinSheet) {
           const lr = pinSheet.getLastRow();
@@ -29,7 +29,7 @@
         }
 
         let completed = [];
-        const distSheet = this.getMonthlySheet('distribution');
+        const distSheet = this.getMonthlySheet('distribution', districtId);
         if (distSheet) {
           const lr = distSheet.getLastRow();
           if (lr > 0) {
@@ -47,12 +47,13 @@
       }
     }
 
-    setInProgress(data) {
+    setInProgress(data, districtId = "") {
       try {
         const rowId = parseInt(data.rowId, 10);
         if (isNaN(rowId)) return { success: false, message: 'Invalid rowId' };
 
-        let pinSheet = this.getMonthlySheet('pin');
+        const targetDistId = (data && data.districtId) ? String(data.districtId).trim() : districtId;
+        let pinSheet = this.getMonthlySheet('pin', targetDistId);
         if (!pinSheet) {
           return { success: false, code: "SHEET_NOT_READY", message: "PinStatus sheet unavailable" };
         }
