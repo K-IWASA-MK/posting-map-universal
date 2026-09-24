@@ -125,30 +125,57 @@
       }
     }
 
-    getContractEndDate(existingSheet, districtId = "") {
+    getContractCacheKey(districtId = "") {
+      const cleanDistrict = String(districtId || "").trim().toUpperCase() || "__DEFAULT__";
+      return `CONTRACT_STATUS_${cleanDistrict}`;
+    }
+
+    invalidateContractCache(districtId = "") {
       try {
-        const s = existingSheet || (this.getSS(districtId) ? this.getSS(districtId).getSheetByName('SYSTEM_INFO') : null);
-        if (!s) return '';
-        const lr = s.getLastRow();
-        if (lr < 2) return '';
-        const data = s.getRange(1, 1, lr, 2).getValues();
-        for (let i = 0; i < data.length; i++) {
-          if (data[i][0] === '契約終了日') {
-            const val = data[i][1];
-            if (val instanceof Date) {
-              if (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function') {
-                return Utilities.formatDate(val, "JST", "yyyy-MM-dd");
-              }
-              const jst = new Date(val.getTime() + (9 * 60 * 60 * 1000));
-              return jst.toISOString().slice(0, 10);
-            }
-            if (val !== undefined && val !== null && String(val).trim() !== '') {
-              return String(val).trim().replace(/\//g, '-');
-            }
-            return '';
+        if (typeof CacheService !== 'undefined' && CacheService.getScriptCache) {
+          const cache = CacheService.getScriptCache();
+          if (cache) {
+            cache.remove(this.getContractCacheKey(districtId));
+            cache.remove(this.getContractCacheKey(""));
+            cache.remove("CONTRACT_STATUS___DEFAULT__");
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn("[SystemInfoService] Cache invalidation warning:", e);
+      }
+    }
+
+    getContractEndDate(existingSheet, districtId = "") {
+      const s = existingSheet || (this.getSS(districtId) ? this.getSS(districtId).getSheetByName('SYSTEM_INFO') : null);
+      if (!s) {
+        throw new Error('SYSTEM_INFO sheet unavailable');
+      }
+      const lr = s.getLastRow();
+      if (lr < 2) {
+        throw new Error('SYSTEM_INFO sheet has no data rows');
+      }
+      const data = s.getRange(1, 1, lr, 2).getValues();
+      let foundRow = false;
+      for (let i = 0; i < data.length; i++) {
+        if (data[i][0] === '契約終了日') {
+          foundRow = true;
+          const val = data[i][1];
+          if (val instanceof Date) {
+            if (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function') {
+              return Utilities.formatDate(val, "JST", "yyyy-MM-dd");
+            }
+            const jst = new Date(val.getTime() + (9 * 60 * 60 * 1000));
+            return jst.toISOString().slice(0, 10);
+          }
+          if (val !== undefined && val !== null && String(val).trim() !== '') {
+            return String(val).trim().replace(/\//g, '-');
+          }
+          return '';
+        }
+      }
+      if (!foundRow) {
+        throw new Error('契約終了日 row missing in SYSTEM_INFO');
+      }
       return '';
     }
 
@@ -171,8 +198,9 @@
       } catch (e) {}
     }
 
-    setContractEndDate(dateStr) {
-      const ss = this.getSS();
+    setContractEndDate(dateStr, districtId = "") {
+      const ss = this.getSS(districtId);
+      const districtName = (ss && ss.getName) ? ss.getName() : "";
       let sheet = ss.getSheetByName('SYSTEM_INFO');
       if (!sheet) sheet = ss.insertSheet('SYSTEM_INFO');
 
@@ -199,15 +227,11 @@
       if (typeof SpreadsheetApp !== 'undefined' && SpreadsheetApp.flush) {
         SpreadsheetApp.flush();
       }
+      this.invalidateContractCache(districtName || districtId);
       return { success: true, contractEndDate: cleanDate };
     }
 
     getContractStatus(existingSheet, now = new Date(), districtId = "") {
-      const endDateStr = this.getContractEndDate(existingSheet, districtId);
-      if (!endDateStr) {
-        return { status: 'ACTIVE', isExpired: false, endDate: '' };
-      }
-
       let todayStr = '';
       if (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function') {
         todayStr = Utilities.formatDate(now, "JST", "yyyy-MM-dd");
@@ -216,13 +240,72 @@
         todayStr = jst.toISOString().slice(0, 10);
       }
 
-      const isExpired = todayStr > endDateStr;
-      return {
-        status: isExpired ? 'EXPIRED' : 'ACTIVE',
-        isExpired: isExpired,
-        endDate: endDateStr,
-        today: todayStr
-      };
+      // 1. existingSheet が指定されていない場合、Level 2 Cache (CacheService) を照会
+      if (!existingSheet) {
+        try {
+          if (typeof CacheService !== 'undefined' && CacheService.getScriptCache) {
+            const cache = CacheService.getScriptCache();
+            if (cache) {
+              const cached = cache.get(this.getContractCacheKey(districtId));
+              if (cached) {
+                const parsed = JSON.parse(cached);
+                if (parsed && typeof parsed.endDate === 'string') {
+                  const isExpired = parsed.endDate ? (todayStr > parsed.endDate) : false;
+                  return {
+                    status: isExpired ? 'EXPIRED' : 'ACTIVE',
+                    isExpired: isExpired,
+                    endDate: parsed.endDate,
+                    today: todayStr,
+                    fromCache: true
+                  };
+                }
+              }
+            }
+          }
+        } catch (cacheErr) {
+          console.warn("[SystemInfoService] Contract cache read error, falling back to sheet:", cacheErr);
+        }
+      }
+
+      // 2. Cache MISS または existingSheet 直接指定時: 実読込
+      try {
+        const endDateStr = this.getContractEndDate(existingSheet, districtId);
+        const isExpired = endDateStr ? (todayStr > endDateStr) : false;
+        const result = {
+          status: isExpired ? 'EXPIRED' : 'ACTIVE',
+          isExpired: isExpired,
+          endDate: endDateStr,
+          today: todayStr
+        };
+
+        // 3. 実読込成功時: Cache 再構築 (Level 2, TTL: 6時間 = 21600秒)
+        if (!existingSheet) {
+          try {
+            if (typeof CacheService !== 'undefined' && CacheService.getScriptCache) {
+              const cache = CacheService.getScriptCache();
+              if (cache) {
+                cache.put(this.getContractCacheKey(districtId), JSON.stringify({ endDate: endDateStr }), 21600);
+              }
+            }
+          } catch (putErr) {
+            console.warn("[SystemInfoService] Contract cache put warning:", putErr);
+          }
+        }
+
+        return result;
+      } catch (readErr) {
+        // 4. SYSTEM_INFO 読込失敗 / シート不在 / 例外: fail-closed (安全側遮断)
+        // 【ACTIVEを推定して返すfail-openは禁止】
+        console.error("[SystemInfoService] FAIL-CLOSED: Contract status check failed:", readErr);
+        return {
+          status: 'EXPIRED',
+          isExpired: true,
+          endDate: '',
+          today: todayStr,
+          code: 'CONTRACT_CHECK_FAILED',
+          message: '契約情報の検証に失敗したため安全のためアクセスを遮断しました。'
+        };
+      }
     }
 
     syncSystemInfo(options) {
@@ -275,6 +358,7 @@
         sheet.getRange(`A2:A${values.length}`).setFontWeight('bold');
         sheet.setFrozenRows(1);
         SpreadsheetApp.flush();
+        this.invalidateContractCache(districtName);
 
         if (opts.lineChannelAccessToken && typeof opts.lineChannelAccessToken === 'string') {
           try {

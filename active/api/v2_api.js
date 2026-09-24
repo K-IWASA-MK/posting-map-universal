@@ -780,8 +780,8 @@ function processPostAction(action, postData, e, districtId = "") {
       let stocks = [];
       let ranking = [];
       try {
-        stocks = FlyerRepository.getInstance().findAllStocks("");
-        ranking = DistributionRepository.getInstance().fetchRankingData("");
+        stocks = FlyerRepository.getInstance().findAllStocks("", districtId);
+        ranking = DistributionRepository.getInstance().fetchRankingData("", districtId, rawRoster);
       } catch (eAgg) {}
       const aggregatedRoster = rawRoster.map(r => {
         const staffStocks = stocks.filter(st => st.staffId === r.id);

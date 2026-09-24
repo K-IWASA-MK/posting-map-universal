@@ -98,8 +98,9 @@ class SpreadsheetResolver {
 
   getSpreadsheet(districtId) {
     const cleanDistrictId = String(districtId || "").trim().toUpperCase();
-    if (cleanDistrictId && this.spreadsheetCacheByDistrict[cleanDistrictId]) {
-      return this.spreadsheetCacheByDistrict[cleanDistrictId];
+    const cacheKey = cleanDistrictId || '__DEFAULT__';
+    if (this.spreadsheetCacheByDistrict[cacheKey]) {
+      return this.spreadsheetCacheByDistrict[cacheKey];
     }
 
     const ssId = this.getSpreadsheetId(cleanDistrictId);
@@ -108,8 +109,8 @@ class SpreadsheetResolver {
         const ss = SpreadsheetApp.openById(ssId);
         if (cleanDistrictId) {
           this.verifyIntegrityGuard(ss, cleanDistrictId);
-          this.spreadsheetCacheByDistrict[cleanDistrictId] = ss;
         }
+        this.spreadsheetCacheByDistrict[cacheKey] = ss;
         return ss;
       } catch (err) {
         console.error(`[SpreadsheetResolver] Failed to open spreadsheet by ID "${ssId}":`, err);

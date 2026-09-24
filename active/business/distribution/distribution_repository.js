@@ -60,7 +60,7 @@ if (typeof DistributionRepository === 'undefined') {
       return null;
     }
 
-    fetchRankingData(requestLineUserId = "", districtId = "") {
+    fetchRankingData(requestLineUserId = "", districtId = "", cachedRoster = null) {
       const sheet = this.getDistributionSheet(districtId);
       if (!sheet) return [];
 
@@ -74,12 +74,14 @@ if (typeof DistributionRepository === 'undefined') {
       const cleanReqLineId = String(requestLineUserId || "").trim();
 
       // 名簿逆引き用キャッシュ（P列が空のレガシー行の安全な補完のため）
-      let rosterList = [];
-      try {
-        if (typeof StaffService !== 'undefined' && StaffService.getInstance) {
-          rosterList = StaffService.getInstance().getRoster() || [];
-        }
-      } catch (eRoster) {}
+      let rosterList = Array.isArray(cachedRoster) ? cachedRoster : [];
+      if (rosterList.length === 0) {
+        try {
+          if (typeof StaffService !== 'undefined' && StaffService.getInstance) {
+            rosterList = StaffService.getInstance().getRoster() || [];
+          }
+        } catch (eRoster) {}
+      }
 
       for (let i = 0; i < values.length; i++) {
         const row = values[i];
