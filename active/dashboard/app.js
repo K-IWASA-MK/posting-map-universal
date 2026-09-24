@@ -562,7 +562,9 @@ function pressNum(key) {
 
       // 3. 写真確定後に状態を更新し、即座にMISSION COMPLETED画面を生成（GPSは待たない）
       if (p) {
-        p.isDone = true;
+        // Phase 9: 写真・GPS取得完了は DRAFT (READY_TO_SUBMIT) であり、Backend永続化成功前の COMPLETED 確定ではない
+        p.isDone = false;
+        p.isReadyToSubmit = true;
         p.count = valNum;
         p.staffName = staffName;
         p.staffId = staffId; // Payload用に保持
@@ -574,10 +576,10 @@ function pressNum(key) {
         p.tempPhotoUrl = URL.createObjectURL(imageBlob);
         p.photoBase64 = photoBase64;
 
-        // モーダルを再描画（ここでMISSION COMPLETEDが表示される）
+        // モーダルを再描画（提出前プレビュー画面として表示するため isDone: true のプロパティを渡す）
         const modalContent = $('detail-modal-content');
         if (modalContent) {
-          modalContent.innerHTML = renderDetailModalContent(p);
+          modalContent.innerHTML = renderDetailModalContent({ ...p, isDone: true });
         }
       }
 
@@ -614,7 +616,7 @@ function pressNum(key) {
         // GPS状態が確定したのでモーダルのみ再描画（提出処理中はUIを上書きしない）
         const modalContent = $('detail-modal-content');
         if (modalContent && p.syncStatus !== 'submitting') {
-          modalContent.innerHTML = renderDetailModalContent(p);
+          modalContent.innerHTML = renderDetailModalContent(p.isDone ? p : { ...p, isDone: true });
         }
       }
     })().catch(err => {
@@ -672,6 +674,7 @@ async function submitMissionComplete(areaName, rowId) {
     } catch (authErr) {
       alert("スタッフ認証が完了していないため、配布完了を送信できません。再起動してください。");
       p.syncStatus = 'failed';
+      p.isDone = false; // Phase 9: 認証失敗時は配布完了としない
       if (submitBtn) {
         submitBtn.disabled = false;
         submitBtn.textContent = '🚀 この内容で提出する';
@@ -710,7 +713,10 @@ async function submitMissionComplete(areaName, rowId) {
         const status = await window.getRowStatus(Number(rowId));
 
         if (status === null) {
-          // キューから消滅 ＝ GAS保存成功（データ送信成功＝ロック）
+          // キューから消滅 ＝ GAS保存成功（データ送信成功＝真の配布完了確定）
+          p.isDone = true;
+          delete p.isReadyToSubmit;
+          p.syncStatus = 'synced';
           if (typeof window.setPinInProgress === 'function') {
             window.setPinInProgress(rowId, "remove");
           }
@@ -740,6 +746,8 @@ async function submitMissionComplete(areaName, rowId) {
     console.error("Submission failed:", err);
     alert("提出に失敗しました: " + (err.message || "エラー"));
     p.syncStatus = 'pending';
+    // Phase 9: Backend永続化が成功していないため、配布完了を確定させない (COMPLETED = false)
+    p.isDone = false;
   } finally {
     const submitBtn = $('submit-mission-btn');
     const cancelBtn = $('cancel-mission-btn');
