@@ -410,7 +410,8 @@ function doPost(e) {
 
   const isDashboardAction = [
     'getRoster',
-    'getTransferRequests'
+    'getTransferRequests',
+    'getDashboardSnapshot'
   ].includes(action);
 
   if (action === 'registerOrValidateDevice') {
