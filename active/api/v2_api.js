@@ -153,13 +153,56 @@ function doGet(e) {
 
   const districtId = String((params && params.districtId) || "").trim();
 
+  // 1. マルチ地区環境における districtId 必須チェック (Routing Gate)
+  try {
+    const props = PropertiesService.getScriptProperties();
+    if (props && props.getProperty("DISTRICT_REGISTRY") && !districtId) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        code: "MISSING_DISTRICT_ID",
+        message: "districtId is required for multi-district routing."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+  } catch (eProps) {}
+
+  // 2. DISTRICT_REGISTRY 照合 & 対象DB確定 & Integrity Guard
+  if (districtId) {
+    try {
+      SpreadsheetResolver.getInstance().getSpreadsheet(districtId);
+    } catch (eResolver) {
+      const errStr = eResolver.toString();
+      if (errStr.includes("DISTRICT_MISMATCH")) {
+        return ContentService.createTextOutput(JSON.stringify({
+          success: false,
+          code: "DISTRICT_MISMATCH",
+          message: eResolver.message
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+      if (errStr.includes("not found in DISTRICT_REGISTRY")) {
+        return ContentService.createTextOutput(JSON.stringify({
+          success: false,
+          code: "DISTRICT_NOT_FOUND",
+          message: eResolver.message
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        code: "CONTRACT_CHECK_FAILED",
+        message: "契約情報の検証に失敗したため安全のためアクセスを遮断しました。"
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  // 3. 契約確認 (Contract Gate)
   if (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
     const contract = SystemInfoService.getInstance().getContractStatus(null, new Date(), districtId);
     if (contract.isExpired) {
+      const errorCode = contract.code || "CONTRACT_EXPIRED";
+      const errorMsg = contract.message || "契約期間が終了しているため利用できません。";
       return ContentService.createTextOutput(JSON.stringify({
         success: false,
-        code: "CONTRACT_EXPIRED",
-        message: "契約期間が終了しているため利用できません。"
+        code: errorCode,
+        message: errorMsg
       })).setMimeType(ContentService.MimeType.JSON);
     }
   }
@@ -604,13 +647,44 @@ function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  // 1. DISTRICT_REGISTRY 照合 & 対象DB確定 & Integrity Guard
+  if (districtId) {
+    try {
+      SpreadsheetResolver.getInstance().getSpreadsheet(districtId);
+    } catch (eResolver) {
+      const errStr = eResolver.toString();
+      if (errStr.includes("DISTRICT_MISMATCH")) {
+        return ContentService.createTextOutput(JSON.stringify({
+          success: false,
+          code: "DISTRICT_MISMATCH",
+          message: eResolver.message
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+      if (errStr.includes("not found in DISTRICT_REGISTRY")) {
+        return ContentService.createTextOutput(JSON.stringify({
+          success: false,
+          code: "DISTRICT_NOT_FOUND",
+          message: eResolver.message
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        code: "CONTRACT_CHECK_FAILED",
+        message: "契約情報の検証に失敗したため安全のためアクセスを遮断しました。"
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  // 2. 契約確認 (Contract Gate)
   if (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
     const contract = SystemInfoService.getInstance().getContractStatus(null, new Date(), districtId);
     if (contract.isExpired) {
+      const errorCode = contract.code || "CONTRACT_EXPIRED";
+      const errorMsg = contract.message || "契約期間が終了しているため利用できません。";
       return ContentService.createTextOutput(JSON.stringify({
         success: false,
-        code: "CONTRACT_EXPIRED",
-        message: "契約期間が終了しているため利用できません。"
+        code: errorCode,
+        message: errorMsg
       })).setMimeType(ContentService.MimeType.JSON);
     }
   }

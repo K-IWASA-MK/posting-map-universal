@@ -256,6 +256,7 @@
                     isExpired: isExpired,
                     endDate: parsed.endDate,
                     today: todayStr,
+                    code: isExpired ? 'CONTRACT_EXPIRED' : 'ACTIVE',
                     fromCache: true
                   };
                 }
@@ -275,7 +276,8 @@
           status: isExpired ? 'EXPIRED' : 'ACTIVE',
           isExpired: isExpired,
           endDate: endDateStr,
-          today: todayStr
+          today: todayStr,
+          code: isExpired ? 'CONTRACT_EXPIRED' : 'ACTIVE'
         };
 
         // 3. 実読込成功時: Cache 再構築 (Level 2, TTL: 6時間 = 21600秒)
