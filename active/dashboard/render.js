@@ -305,19 +305,29 @@ function renderDetailModalContent(p) {
           </div>
         </div>
 
-        <!-- 【注意文】枠線・背景なしのシンプルなテキスト -->
-        <div style="color: rgba(245, 158, 11, 0.9); display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 11px; font-weight: 700; width: 100%; box-sizing: border-box; padding: 2px 0;">
-          <span>⚠️</span><span>提出すると配布実績として記録されます</span>
-        </div>
+        <!-- 【注意文】枠線・背景なしのシンプルなテキスト / キュー状態バッジ -->
+        ${p.syncStatus === 'RETRY' ? `
+          <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); color: #f59e0b; border-radius: 10px; padding: 6px 10px; font-size: 11px; font-weight: 700; width: 100%; box-sizing: border-box; text-align: center; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span>🔄</span><span>送信再試行待ち（バックグラウンドで自動再送されます）</span>
+          </div>
+        ` : (p.syncStatus === 'submitting' || p.syncStatus === 'PENDING' || p.syncStatus === 'SYNCING') ? `
+          <div style="background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.3); color: #60a5fa; border-radius: 10px; padding: 6px 10px; font-size: 11px; font-weight: 700; width: 100%; box-sizing: border-box; text-align: center; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span>⏳</span><span>送信中・キュー待機中（画面を閉じても送信されます）</span>
+          </div>
+        ` : `
+          <div style="color: rgba(245, 158, 11, 0.9); display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 11px; font-weight: 700; width: 100%; box-sizing: border-box; padding: 2px 0;">
+            <span>⚠️</span><span>提出すると配布実績として記録されます</span>
+          </div>
+        `}
 
         <!-- 【アクションボタン】上: 提出(ブルー) / 下: キャンセル(ダークグレー) -->
         <div style="width: 100%; display: flex; flex-direction: column; gap: 12px; box-sizing: border-box;">
           <button type="button" id="submit-mission-btn" onclick="submitMissionComplete('${escapeHtml(areaName)}', ${p.rowId})" class="btn-neu"
-            style="width: 100%; background: #2563eb; border: none; color: white; border-radius: 14px; padding: 14px 8px; font-size: 13px; font-weight: 900; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;">
-            🚀 この内容で提出する
+            ${(p.syncStatus === 'submitting' || p.syncStatus === 'PENDING' || p.syncStatus === 'SYNCING' || p.syncStatus === 'RETRY') ? 'disabled style="width: 100%; background: #475569; border: none; color: rgba(255,255,255,0.6); border-radius: 14px; padding: 14px 8px; font-size: 13px; font-weight: 900; cursor: not-allowed; display: flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;"' : 'style="width: 100%; background: #2563eb; border: none; color: white; border-radius: 14px; padding: 14px 8px; font-size: 13px; font-weight: 900; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;"'}>
+            ${p.syncStatus === 'RETRY' ? '🔄 再試行待機中...' : (p.syncStatus === 'submitting' || p.syncStatus === 'PENDING' || p.syncStatus === 'SYNCING') ? '⏳ 送信中...' : '🚀 この内容で提出する'}
           </button>
           <button type="button" id="cancel-mission-btn" onclick="cancelMissionComplete(${p.rowId})"
-            style="width: 100%; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.6); border-radius: 14px; padding: 12px 8px; font-size: 13px; font-weight: 900; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; box-sizing: border-box;">
+            ${(p.syncStatus === 'submitting' || p.syncStatus === 'PENDING' || p.syncStatus === 'SYNCING') ? 'disabled style="width: 100%; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); color: rgba(255, 255, 255, 0.2); border-radius: 14px; padding: 12px 8px; font-size: 13px; font-weight: 900; cursor: not-allowed; display: flex; align-items: center; justify-content: center; gap: 4px; box-sizing: border-box;"' : 'style="width: 100%; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.6); border-radius: 14px; padding: 12px 8px; font-size: 13px; font-weight: 900; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; box-sizing: border-box;"'}>
             ✕ キャンセル
           </button>
         </div>

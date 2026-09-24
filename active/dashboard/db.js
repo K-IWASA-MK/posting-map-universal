@@ -56,20 +56,43 @@ async function enqueueSync(item) {
   return new Promise((resolve, reject) => {
     const tx    = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    const record = {
-      ...item,
-      syncStatus:  'PENDING',
-      retryCount:  0,
-      nextRetryAt: 0,
-      timestamp:   Date.now()
+
+    // 同一 readwrite トランザクション境界内で探索（競合窓を完全排除）
+    const getAllReq = store.getAll();
+    getAllReq.onsuccess = () => {
+      const queue = getAllReq.result || [];
+      const targetRowId = Number(item.rowId);
+
+      // 同一 rowId のアイテムが既にキューに存在するかチェック
+      const existing = queue.find(q => Number(q.rowId) === targetRowId);
+      if (existing) {
+        console.warn(`[Queue] Duplicate enqueue avoided for rowId=${targetRowId}, existingId=${existing.id}`);
+        resolve(existing.id);
+        processQueue();
+        return;
+      }
+
+      // クライアント不変操作識別子 (requestId) を付与（Backend冪等性ロジックは変更せずクライアント識別子として活用）
+      const record = {
+        ...item,
+        requestId:   item.requestId || ('req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)),
+        syncStatus:  'PENDING',
+        retryCount:  item.retryCount || 0,
+        nextRetryAt: item.nextRetryAt || 0,
+        timestamp:   item.timestamp || Date.now()
+      };
+
+      const addReq = store.add(record);
+      addReq.onsuccess = () => {
+        resolve(addReq.result);
+        // 即座に同期を試みる（バックグラウンド）
+        processQueue();
+      };
+      addReq.onerror = (e) => reject(e.target.error);
     };
-    const request = store.add(record);
-    request.onsuccess = () => {
-      resolve(request.result);
-      // 即座に同期を試みる（バックグラウンド）
-      processQueue();
-    };
-    request.onerror = (e) => reject(e.target.error);
+
+    getAllReq.onerror = (e) => reject(e.target.error);
+    tx.onerror = (e) => reject(e.target.error);
   });
 }
 
@@ -123,6 +146,16 @@ async function updateQueueItem(id, fields) {
 }
 
 /**
+ * クライアント不変操作識別子 (requestId) を生成
+ * @param {string} prefix プレフィックス (デフォルト: 'req')
+ * @returns {string} 一意の識別子
+ */
+function generateRequestId(prefix = 'req') {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+window.generateRequestId = generateRequestId;
+
+/**
  * 特定 rowId の送信ステータスを取得（数値/文字列の型を正規化）
  * @returns {string|null} 'PENDING' | 'SYNCING' | 'RETRY' | null
  */
@@ -133,6 +166,17 @@ async function getRowStatus(rowId) {
   return found ? (found.syncStatus || found.status || 'PENDING') : null;
 }
 window.getRowStatus = getRowStatus;
+
+/**
+ * 現在キュー内に存在する全レコードの rowId 配列（数値）を取得
+ * 起動時やデータロード時の待機ピン復元に使用
+ * @returns {Promise<number[]>}
+ */
+async function getSyncQueueRowIds() {
+  const queue = await getQueue();
+  return (queue || []).map(item => Number(item.rowId)).filter(id => !isNaN(id));
+}
+window.getSyncQueueRowIds = getSyncQueueRowIds;
 
 // ── 指数バックオフリトライスケジューリング ─────────────────────
 
@@ -160,6 +204,7 @@ async function scheduleRetry(item) {
  * - 多重実行防止（isProcessing フラグ）
  * - オフライン時はスキップ
  * - 指数バックオフによる nextRetryAt チェック
+ * - クラッシュ復旧（SYNCING のまま中断されたレコードの再送）
  */
 async function processQueue() {
   if (isProcessing) return;
@@ -174,11 +219,11 @@ async function processQueue() {
   try {
     const queue = await getQueue();
 
-    // 送信対象: PENDING または nextRetryAt を過ぎた RETRY
+    // 送信対象: PENDING, クラッシュ後の SYNCING, または nextRetryAt を過ぎた RETRY
     const now = Date.now();
     const targets = queue.filter(item => {
       const s = item.syncStatus || item.status;
-      if (s === 'PENDING' || s === 'pending') return true;
+      if (s === 'PENDING' || s === 'pending' || s === 'SYNCING') return true;
       if (s === 'RETRY'   || s === 'failed') {
         return (item.nextRetryAt || 0) <= now;
       }
@@ -201,6 +246,7 @@ async function processQueue() {
 
       try {
         const payload = {
+          requestId:  item.requestId  || '',
           areaName:   item.areaName,
           rowId:      item.rowId,
           isDone:     item.isDone,
@@ -221,9 +267,13 @@ async function processQueue() {
         }
 
         if (res && res.success) {
+          // ── 因果関係の絶対順序 ──────────────────────────────────
+          // 1. Backend persistence confirmed (res.success === true)
+          // 2. dequeueSync()
           await dequeueSync(item.id);
 
-          // 1. メモリキャッシュ（一括保存用）の同期更新
+          // 3. COMPLETED 確定 & 4. p.isDone = true
+          // メモリキャッシュ（一括保存用）の同期更新
           if (window.cityAreaCache && window.cityAreaCache[item.areaName]) {
             const cachedPoints = window.cityAreaCache[item.areaName];
             const p = cachedPoints.find(pt => pt.rowId === item.rowId);
@@ -233,22 +283,50 @@ async function processQueue() {
                 p.gps = `${item.latitude},${item.longitude}`;
               }
               p.syncStatus = undefined;
+              p.isDone = true;
               delete p.tempPhotoUrl;
+              delete p.isReadyToSubmit;
             }
           }
 
-          // 2. 現在開いているモーダル(L3)のallPointsを同期
+          // 現在開いているモーダル(L3)のallPointsを同期
           if (typeof allPoints !== 'undefined' && allPoints && window.currentCityDetailAreaName === item.areaName) {
+            const p = allPoints.find(pt => pt.rowId === item.rowId);
+            if (p) {
+              p.photoUrl = res.photoUrl || '';
+              if (item.latitude && item.longitude) {
+                p.gps = `${item.latitude},${item.longitude}`;
+              }
+              p.syncStatus = undefined;
+              p.isDone = true;
+              delete p.tempPhotoUrl;
+              delete p.isReadyToSubmit;
+            }
+
+            // 5. 完了ピン・ロック
+            if (typeof window.setPinInProgress === 'function') {
+              window.setPinInProgress(item.rowId, "remove");
+            }
+            if (window.globalPinStatus) {
+              if (!window.globalPinStatus.completed.includes(item.rowId)) {
+                window.globalPinStatus.completed.push(item.rowId);
+              }
+              window.globalPinStatus.inProgress = window.globalPinStatus.inProgress.filter(id => id !== item.rowId);
+            }
+            if (typeof window.lockActivePinAndBubble === 'function') {
+              window.lockActivePinAndBubble(item.rowId);
+            }
+
             if (window.currentPointDetailRowId === item.rowId) {
               const mc = document.getElementById('detail-modal-content');
               if (mc && typeof renderDetailModalContent === 'function') {
-                const p = allPoints.find(pt => pt.rowId === item.rowId);
-                if (p) mc.innerHTML = renderDetailModalContent(p);
+                const updatedPoint = allPoints.find(pt => pt.rowId === item.rowId);
+                if (updatedPoint) mc.innerHTML = renderDetailModalContent(updatedPoint);
               }
             }
           }
 
-          console.log(`[Queue] Synced: id=${item.id}, rowId=${item.rowId}`);
+          console.log(`[Queue] Synced: id=${item.id}, rowId=${item.rowId}, reqId=${item.requestId || 'legacy'}`);
           anySuccess = true; // 1件でも成功 → 後でまとめてUI更新
         } else {
           throw new Error(res ? (res.message || 'API failure') : 'No response');

@@ -247,6 +247,11 @@ async function startApp() {
 
     fetchSystemSummary();
 
+    // 起動時の未送信キュー復旧・送信処理（クラッシュ・オフライン復旧）
+    if (typeof processQueue === 'function') {
+      processQueue();
+    }
+
     loadData(false).catch(err => {
       console.warn("Background load error:", err);
       logDebug("[loadData] Background error: " + (err ? err.message : err));
@@ -412,6 +417,23 @@ async function loadData(skipSync = false) {
   }
 
   await tier1Promise;
+
+  // 待機中キューのピン状態復元（強制終了・クラッシュ復旧）
+  if (typeof window.getSyncQueueRowIds === 'function') {
+    try {
+      const queueRowIds = await window.getSyncQueueRowIds();
+      if (queueRowIds && queueRowIds.length > 0 && Array.isArray(allPoints)) {
+        queueRowIds.forEach(rowId => {
+          const pt = allPoints.find(p => Number(p.rowId) === Number(rowId));
+          if (pt && !pt.isDone) {
+            pt.syncStatus = 'pending';
+          }
+        });
+      }
+    } catch (qErr) {
+      console.warn("[loadData] Failed to restore pending queue pins:", qErr);
+    }
+  }
 }
 
 // ランキングデータのバックグラウンド先読み関数
@@ -489,7 +511,28 @@ window.triggerUISyncRefresh = async function() {
       if (found) {
         p.syncStatus = found.syncStatus || found.status; // 'pending' | 'sending' | 'failed'
       } else {
-        delete p.syncStatus;
+        // キューに存在しない場合
+        // もし以前送信待機中（pending/SYNCING/RETRY等）だったアイテムがキューから消滅した場合、
+        // Backend永続化が成功して dequeueSync されたことを意味するため、COMPLETED (isDone=true) に昇格
+        if (p.syncStatus && p.syncStatus !== 'synced') {
+          p.isDone = true;
+          delete p.isReadyToSubmit;
+          p.syncStatus = 'synced';
+          if (typeof window.setPinInProgress === 'function') {
+            window.setPinInProgress(p.rowId, "remove");
+          }
+          if (window.globalPinStatus) {
+            if (!window.globalPinStatus.completed.includes(p.rowId)) {
+              window.globalPinStatus.completed.push(p.rowId);
+            }
+            window.globalPinStatus.inProgress = window.globalPinStatus.inProgress.filter(id => id !== p.rowId);
+          }
+          if (typeof window.lockActivePinAndBubble === 'function') {
+            window.lockActivePinAndBubble(p.rowId);
+          }
+        } else if (!p.isDone) {
+          delete p.syncStatus;
+        }
       }
     });
 
@@ -688,8 +731,15 @@ async function submitMissionComplete(areaName, rowId) {
     const finalStaffId = verifiedUserInfo.id || p.staffId || '';
     const finalStaffName = `${verifiedUserInfo.last || ''} ${verifiedUserInfo.first || ''}`.trim() || p.staffName || '';
 
+    // クライアント不変操作識別子 (requestId) を発番
+    const requestId = (typeof window.generateRequestId === 'function')
+      ? window.generateRequestId('req')
+      : ('req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+
     if (typeof enqueueSync === 'function') {
+      // 1. IndexedDB 送信キューに永続化
       await enqueueSync({
+        requestId,
         areaName,
         rowId: Number(rowId),
         isDone:     true,
@@ -706,7 +756,23 @@ async function submitMissionComplete(areaName, rowId) {
         staffId:    finalStaffId
       });
 
-      while (true) {
+      // 2. オフライン判定：オフライン時は即時モーダルを閉じて画面を解放（UIフリーズを完全阻止）
+      if (!navigator.onLine) {
+        p.syncStatus = 'pending';
+        p.isDone = false;
+        alert("電波が圏外のため、端末内に安全に保存しました。\n電波が回復次第、自動で送信されます。");
+        if (typeof closeDetailModal === 'function') {
+          closeDetailModal();
+        }
+        return;
+      }
+
+      // 3. オンライン時：最大3秒間の待機（while(true)無限待機を撤廃しタイムアウト上限を設定）
+      const maxWaitMs = 3000;
+      const startTime = Date.now();
+      let isPersisted = false;
+
+      while (Date.now() - startTime < maxWaitMs) {
         if (typeof window.getRowStatus !== 'function') {
           throw new Error("Sync check mechanism is missing.");
         }
@@ -729,6 +795,7 @@ async function submitMissionComplete(areaName, rowId) {
           if (typeof window.lockActivePinAndBubble === 'function') {
             window.lockActivePinAndBubble(rowId);
           }
+          isPersisted = true;
           break;
         }
         if (status === 'RETRY') {
@@ -736,11 +803,20 @@ async function submitMissionComplete(areaName, rowId) {
         }
         await new Promise(r => setTimeout(r, 500));
       }
-    }
 
-    alert("✓ 提出致しました");
-    if (typeof closeDetailModal === 'function') {
-      closeDetailModal();
+      // 4. 完了または待機完了後の画面解放
+      if (isPersisted) {
+        alert("✓ 提出致しました");
+      } else {
+        // 3秒経過後もバックグラウンドで継続中：通常操作へ復帰
+        p.syncStatus = 'pending';
+        p.isDone = false;
+        alert("送信処理中です。バックグラウンドで送信を継続します。");
+      }
+
+      if (typeof closeDetailModal === 'function') {
+        closeDetailModal();
+      }
     }
   } catch (err) {
     console.error("Submission failed:", err);
