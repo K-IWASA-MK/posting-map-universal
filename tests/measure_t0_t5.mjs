@@ -5,7 +5,10 @@ import vm from 'node:vm';
 import { performance } from 'node:perf_hooks';
 
 console.log("====================================================");
-console.log("⚡ PHASE 14: T0-T5 PERFORMANCE & SLA BENCHMARK");
+console.log("⚡ PHASE 14: T0-T5 LOGIC BENCHMARK (AUXILIARY NODE.JS VM)");
+console.log("⚠️ 注意: 本測定はJS論理実行パスの補助測定であり、");
+console.log("   実ブラウザのRendering/Paint描画オーバーヘッドは含みません。");
+console.log("   正式なSLAエビデンスは tests/measure_chrome_real.mjs を参照。");
 console.log("====================================================");
 
 // ─── 共通ヘルパー: 統計量計算 ──────────────────────────────────

@@ -10,7 +10,7 @@ console.log("====================================================");
 const rootDir = process.cwd();
 
 // ─── 1. ADR-015 制定確認 ─────────────────────────────────────────
-test('1. ADR-015 制定: T0-T5定義、実ユーザー視点T2、統一SLA基準値、線形増加傾向の明文化', () => {
+test('1. ADR-015 制定: 二層測定体系、Node補助vsChrome実機正式エビデンス、0.00ms無効化、実ユーザー視点T2、統一SLA基準値', () => {
   const adrPath = path.join(rootDir, 'docs/architecture/decisions/ADR-015_PERFORMANCE_CONTRACT.md');
   assert.ok(fs.existsSync(adrPath), 'ADR-015 file must exist');
 
@@ -22,6 +22,8 @@ test('1. ADR-015 制定: T0-T5定義、実ユーザー視点T2、統一SLA基準
   assert.ok(content.includes('中央値') && content.includes('5 回測定'), 'ADR-015 must specify unified 5-run median measurement protocol');
   assert.ok(content.includes('線形増加傾向'), 'ADR-015 must describe empirical linear trend for N-count scaling');
   assert.ok(content.includes('主要UI展開完了') && content.includes('ローディング'), 'ADR-015 must define T2 from user perspective (loading dismissed & main UI visible)');
+  assert.ok(content.includes('二層測定体系') || content.includes('Chrome 実機測定'), 'ADR-015 must define two-tier measurement architecture');
+  assert.ok(content.includes('0.00ms') && (content.includes('無効') || content.includes('禁じ')), 'ADR-015 must invalidate 0.00ms Node mock measurement as real SLA evidence');
 });
 
 // ─── 2. T0〜T5 測定境界・因果関係検証 ─────────────────────────────
@@ -141,4 +143,16 @@ test('8. 不可侵境界: Phase 7〜13 契約破壊なし、マスターデー�
     assert.ok(!allDeps['newrelic'], 'newrelic must not be installed');
     assert.ok(!allDeps['dd-trace'], 'datadog must not be installed');
   }
+});
+
+// ─── 9. 実機 Chrome 測定基盤検証 ─────────────────────────────────
+test('9. 実機 Chrome 測定基盤: measure_chrome_real.mjs による非侵入型 CDP 実機測定の確立', () => {
+  const scriptPath = path.join(rootDir, 'tests/measure_chrome_real.mjs');
+  assert.ok(fs.existsSync(scriptPath), 'measure_chrome_real.mjs must exist');
+
+  const content = fs.readFileSync(scriptPath, 'utf8');
+  assert.ok(content.includes('ChromeController'), 'Script must manage Chrome process');
+  assert.ok(content.includes('performance.getEntriesByType'), 'Script must use Web Performance API');
+  assert.ok(content.includes('Page.addScriptToEvaluateOnNewDocument'), 'Script must use non-invasive CDP injection');
+  assert.ok(content.includes('MutationObserver') && content.includes('loading'), 'Script must observe true T2 DOM state');
 });
