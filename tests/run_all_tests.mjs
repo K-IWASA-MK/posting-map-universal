@@ -29,7 +29,8 @@ const testSuites = [
   'test_contract_expiry.mjs',
   'test_backend_dashboard_identity.mjs',
   'test_optimistic_startup_safety.mjs',
-  'test_sec001_dashboard_auth_fix.mjs'
+  'test_sec001_dashboard_auth_fix.mjs',
+  'test_sec005_getsysteminfo_disclosure.mjs'
 ];
 
 console.log("====================================================");

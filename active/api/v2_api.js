@@ -88,7 +88,6 @@ function doGet(e) {
   const isPublicAction = [
     'getMapsApiKey',
     'getTier1',
-    'getSystemInfo',
     'registerOrValidateDevice',
     'getDeviceStatus',
     'verifyManagerPassword'
@@ -97,7 +96,8 @@ function doGet(e) {
   const isDashboardOnlyAction = [
     'getRoster',
     'getTransferRequests',
-    'getDashboardSnapshot'
+    'getDashboardSnapshot',
+    'getSystemInfo'
   ].includes(action);
 
   const isDualAuthAction = [
@@ -269,11 +269,9 @@ function processGetActionLegacy(action, e, districtId = "") {
         break;
       case 'getSystemInfo':
         try {
-          const reqParam = (e && e.parameter) || {};
-          const targetId = reqParam.spreadsheetId;
-          const ss = targetId
-            ? SpreadsheetApp.openById(targetId)
-            : (typeof getSS === 'function' ? getSS(districtId) : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null));
+          const ss = typeof getSS === 'function'
+            ? getSS(districtId)
+            : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null);
           if (!ss) {
             response = { success: false, message: 'Spreadsheet unavailable' };
           } else {
@@ -281,6 +279,14 @@ function processGetActionLegacy(action, e, districtId = "") {
             const sysValues = (sysSheet && sysSheet.getLastRow() > 0 && sysSheet.getLastColumn() > 0)
               ? sysSheet.getRange(1, 1, sysSheet.getLastRow(), sysSheet.getLastColumn()).getValues()
               : [];
+            const safeSystemInfoRows = sysValues.map(row => {
+              if (Array.isArray(row) && String(row[0] || '').trim() === 'Manager認証パスワード') {
+                const safeRow = row.slice();
+                safeRow[1] = '[REDACTED]';
+                return safeRow;
+              }
+              return row;
+            });
             const sheetsSummary = ss.getSheets().map(s => ({
               name: s.getName(),
               lastRow: s.getLastRow(),
@@ -291,7 +297,7 @@ function processGetActionLegacy(action, e, districtId = "") {
               success: true,
               spreadsheetName: ss.getName(),
               spreadsheetId: ss.getId(),
-              systemInfoRows: sysValues,
+              systemInfoRows: safeSystemInfoRows,
               sheets: sheetsSummary
             };
           }
@@ -423,7 +429,6 @@ function doPost(e) {
   const isPublicAction = [
     'getMapsApiKey',
     'getTier1',
-    'getSystemInfo',
     'registerOrValidateDevice',
     'getDeviceStatus',
     'verifyManagerPassword'
@@ -433,6 +438,7 @@ function doPost(e) {
     'getRoster',
     'getTransferRequests',
     'getDashboardSnapshot',
+    'getSystemInfo',
     'logoutManager'
   ].includes(action);
 
@@ -1009,6 +1015,14 @@ function processPostAction(action, postData, e, districtId = "") {
         const sysValues = (sysSheet && sysSheet.getLastRow() > 0 && sysSheet.getLastColumn() > 0)
           ? sysSheet.getRange(1, 1, sysSheet.getLastRow(), sysSheet.getLastColumn()).getValues()
           : [];
+        const safeSystemInfoRows = sysValues.map(row => {
+          if (Array.isArray(row) && String(row[0] || '').trim() === 'Manager認証パスワード') {
+            const safeRow = row.slice();
+            safeRow[1] = '[REDACTED]';
+            return safeRow;
+          }
+          return row;
+        });
         const sheetsSummary = ss.getSheets().map(s => ({
           name: s.getName(),
           lastRow: s.getLastRow(),
@@ -1019,7 +1033,7 @@ function processPostAction(action, postData, e, districtId = "") {
           success: true,
           spreadsheetName: ss.getName(),
           spreadsheetId: ss.getId(),
-          systemInfoRows: sysValues,
+          systemInfoRows: safeSystemInfoRows,
           sheets: sheetsSummary
         };
       } catch (err) {
