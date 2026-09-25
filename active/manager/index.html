@@ -307,15 +307,15 @@
       <!-- 中央スプリット領域 (上段：エリア選択カード 50% / 下段：業務ナビカード 50%) -->
       <div class="flex-1 min-h-0 flex flex-col gap-2 mt-2 mb-1 overflow-hidden">
 
-        <!-- 【上段カード】エリア選択 (104町丁目独立スクロール) -->
+        <!-- 【上段カード】エリア選択 (町丁目独立スクロール) -->
         <div id="area-selector-card" class="flex-1 min-h-0 flex flex-col rounded-2xl bg-[#0B1019]/90 border border-borderNormal p-2 overflow-hidden shadow-inner">
           <div class="flex items-center justify-between px-1.5 pb-1.5 flex-shrink-0 border-b border-borderNormal/60 mb-1">
             <span class="text-xs font-bold text-white tracking-wide flex items-center gap-1">
               <span>📍</span> エリア選択
             </span>
-            <span id="area-selector-count" class="text-[10px] font-mono font-bold bg-brand/20 text-brand px-1.5 py-0.5 rounded-full">104</span>
+            <span id="area-selector-count" class="text-[10px] font-mono font-bold bg-brand/20 text-brand px-1.5 py-0.5 rounded-full">--</span>
           </div>
-          <!-- 104町丁目スクロールリスト -->
+          <!-- 町丁目スクロールリスト -->
           <div id="area-selector-list" class="flex-1 min-h-0 overflow-y-auto space-y-0.5 pr-0.5">
             <!-- populateAreaSelector で動的生成 -->
           </div>
