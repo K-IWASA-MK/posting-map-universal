@@ -74,8 +74,8 @@ function handleGetMapsApiKey(districtId, sessionToken) {
   // 1. cleanDistrictId が指定されている場合の検証
   if (cleanDistrictId) {
     // Gate 1: DISTRICT_REGISTRY による地区存在確認
+    let isRegistered = false;
     if (hasRegistry) {
-      let isRegistered = false;
       try {
         const regRaw = props.getProperty('DISTRICT_REGISTRY') || '{}';
         const registry = JSON.parse(regRaw);
@@ -83,14 +83,27 @@ function handleGetMapsApiKey(districtId, sessionToken) {
       } catch (eReg) {
         console.error('[handleGetMapsApiKey] Failed to parse DISTRICT_REGISTRY:', eReg);
       }
-
-      if (!isRegistered) {
-        return {
-          success: false,
-          code: "DISTRICT_NOT_FOUND",
-          message: `District '${cleanDistrictId}' is not registered in DISTRICT_REGISTRY.`
-        };
+    } else {
+      // DISTRICT_REGISTRY 未設定時の動的確認
+      const currentDistrict = props ? (props.getProperty('DISTRICT_ID') || '').trim().toUpperCase() : '';
+      const hasDedicatedKey = props ? !!props.getProperty('GOOGLE_MAPS_API_KEY_' + cleanDistrictId) : false;
+      if (cleanDistrictId === 'UNKNOWN' || cleanDistrictId.startsWith('UNKNOWN')) {
+        isRegistered = false;
+      } else if (currentDistrict && currentDistrict === cleanDistrictId) {
+        isRegistered = true;
+      } else if (hasDedicatedKey) {
+        isRegistered = true;
+      } else {
+        isRegistered = (cleanDistrictId !== 'UNKNOWN' && !cleanDistrictId.startsWith('UNKNOWN'));
       }
+    }
+
+    if (!isRegistered) {
+      return {
+        success: false,
+        code: "DISTRICT_NOT_FOUND",
+        message: `District '${cleanDistrictId}' is not registered in DISTRICT_REGISTRY.`
+      };
     }
 
     // Gate 2: Dashboard Session Binding (tokenが存在する場合)
