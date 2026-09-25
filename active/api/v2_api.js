@@ -264,6 +264,9 @@ function processGetActionLegacy(action, e, districtId = "") {
       case 'getSystemSummary':
         response = typeof SystemSummaryService !== 'undefined' ? SystemSummaryService.getInstance().getSystemSummary(districtId) : { success: true, ...getDashboardData() };
         break;
+      case 'getMapsApiKey':
+        response = { success: true, mapsApiKey: PropertiesService.getScriptProperties().getProperty('GOOGLE_MAPS_API_KEY') || "" };
+        break;
       case 'getTier1':
         response = typeof Tier1Service !== 'undefined' ? Tier1Service.getInstance().getTier1() : { success: false };
         break;
