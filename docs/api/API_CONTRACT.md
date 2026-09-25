@@ -193,6 +193,41 @@ Backend: ペイロード強制上書き (クライアント送信値を破棄)
 | **Unregistered Staff** | `registerStaff` (名簿初回登録) | 有効な `liffToken` (LINE検証成功) | `UNAUTHORIZED` (無効/期限切れトークン) |
 | **Active Staff (配布員書き込み)** | `submitDistribution`, `updateRecordWithGPSPhoto`, `updateFlyerStock`, `requestFlyerTransfer`, `createBulletinPost`, `sendBulletinContact`, `resolveTransferRequest` | 有効な `liffToken` ＋ 名簿登録済み (`found === true`) | `NOT_REGISTERED` (名簿未登録) / `UNAUTHORIZED` |
 
+### 6.0.1 getMapsApiKey Contract (SEC-007 地区別 Maps API Key 解決契約)
+
+* **認可区分**: `Public` (認証不要で呼び出し可能。Dashboard PIN入力前・H-App LINE認証前の非同期地図初期化を許容)
+* **HTTP Method**: `POST` (推奨) / `GET` (後方互換)
+* **入力パラメータ**:
+  * `action` (string, 必須): `"getMapsApiKey"`
+  * `districtId` (string, 推奨・マルチ地区必須): 対象地区コード (例: `"KUWANA"`, `"KAMEYAMA"`)
+  * `dashboardSessionToken` (string, 任意): 管理者セッション保持時は自動付与
+* **正規化ルール (Normalization)**:
+  * Backend側で必ず `cleanDistrictId = String(districtId || '').trim().toUpperCase()` を実施。大文字小文字の差異を吸収。
+* **解決フロー (Resolution Chain)**:
+  1. `DISTRICT_REGISTRY` 検証: `cleanDistrictId` が指定されている場合、Script Properties の `DISTRICT_REGISTRY` に登録されているか確認。未登録時は `DISTRICT_NOT_FOUND` を返却。
+  2. `Session Binding`: `dashboardSessionToken` が渡された場合、`verifyDashboardSession(token, cleanDistrictId)` を実行。セッション所属地区と要求地区が不一致の場合は `UNAUTHORIZED` を返却（他地区Key搾取防止）。
+  3. `Integrity Guard`: `SpreadsheetResolver` 照合時、スプレッドシート `SYSTEM_INFO` の地区コードと不一致時は `DISTRICT_MISMATCH` を返却。
+  4. `Contract Gate`: 対象地区が契約終了状態 (`CONTRACT_EXPIRED`) の場合は即時遮断。
+  5. 地区別Key探索: `GOOGLE_MAPS_API_KEY_<DISTRICT_ID>` が存在すれば該当Keyを返却 (`isFallback: false`)。
+  6. Phase 1 Legacy Fallback: 地区別Keyが未設定かつ旧共通Key `GOOGLE_MAPS_API_KEY` が存在する場合のみ旧Keyを返却 (`isFallback: true`)。
+  7. Key未設定: 地区別Keyも旧Keyも存在しない場合は `MAPS_KEY_NOT_CONFIGURED` を返却。
+* **エラーコード一覧**:
+  * `MISSING_DISTRICT_ID`: マルチ地区環境で districtId が未指定かつフォールバック不可の場合
+  * `DISTRICT_NOT_FOUND`: 指定地区が DISTRICT_REGISTRY に未登録
+  * `UNAUTHORIZED`: Dashboard Session の所属地区と要求地区が不一致
+  * `CONTRACT_EXPIRED`: 契約期間満了によるアクセス遮断
+  * `MAPS_KEY_NOT_CONFIGURED`: 該当地区の Maps API Key が未設定
+* **レスポンス仕様**:
+  ```json
+  // 正常 (地区別Key)
+  { "success": true, "districtId": "KUWANA", "mapsApiKey": "AIzaSy...", "isFallback": false }
+  // 正常 (Phase 1 旧Keyフォールバック)
+  { "success": true, "districtId": "KUWANA", "mapsApiKey": "AIzaSy...", "isFallback": true }
+  // エラー (未登録地区)
+  { "success": false, "code": "DISTRICT_NOT_FOUND", "message": "District 'UNKNOWN' is not registered in DISTRICT_REGISTRY." }
+  // エラー (セッション不一致)
+  { "success": false, "code": "UNAUTHORIZED", "message": "Session district mismatch. Cross-district key access denied." }
+  ```
 
 ---
 

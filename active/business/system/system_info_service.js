@@ -392,6 +392,13 @@
             if (props) {
               const keyVal = (opts.mapsApiKey || opts.googleMapsApiKey).trim();
               if (keyVal) {
+                const cleanDistrictCode = String(opts.districtId || districtName || '')
+                  .replace(/^POSTING_MAP_/i, '')
+                  .trim()
+                  .toUpperCase();
+                if (cleanDistrictCode) {
+                  props.setProperty('GOOGLE_MAPS_API_KEY_' + cleanDistrictCode, keyVal);
+                }
                 props.setProperty('GOOGLE_MAPS_API_KEY', keyVal);
               }
             }
@@ -415,6 +422,40 @@
       } finally {
         lock.releaseLock();
       }
+    }
+
+    /**
+     * 新地区プロビジョニング時のMaps API Key検証ゲート (SEC-007)
+     * 新規地区は地区別Key (GOOGLE_MAPS_API_KEY_<DISTRICT_ID>) が必須であり、
+     * 旧共通Keyへのフォールバックを許可しない (Provisioning Gate FAIL)。
+     * @param {string} districtId
+     * @return {{ success: boolean, code?: string, message?: string }}
+     */
+    verifyProvisioningMapsKey(districtId) {
+      const cleanDistrictId = String(districtId || '').trim().toUpperCase();
+      if (!cleanDistrictId) {
+        return {
+          success: false,
+          code: 'MISSING_DISTRICT_ID',
+          message: 'districtId is required for provisioning Maps API key verification.'
+        };
+      }
+      const props = (typeof PropertiesService !== 'undefined' && PropertiesService.getScriptProperties)
+        ? PropertiesService.getScriptProperties()
+        : null;
+      const districtKey = props ? props.getProperty('GOOGLE_MAPS_API_KEY_' + cleanDistrictId) : null;
+      if (!districtKey || !districtKey.trim()) {
+        return {
+          success: false,
+          code: 'PROVISIONING_MAPS_KEY_MISSING',
+          message: `District-specific Google Maps API key "GOOGLE_MAPS_API_KEY_${cleanDistrictId}" is required for provisioning.`
+        };
+      }
+      return {
+        success: true,
+        districtId: cleanDistrictId,
+        mapsApiKey: districtKey.trim()
+      };
     }
   }
 

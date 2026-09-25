@@ -30,7 +30,8 @@ const testSuites = [
   'test_backend_dashboard_identity.mjs',
   'test_optimistic_startup_safety.mjs',
   'test_sec001_dashboard_auth_fix.mjs',
-  'test_sec005_getsysteminfo_disclosure.mjs'
+  'test_sec005_getsysteminfo_disclosure.mjs',
+  'test_sec007_district_maps_api_key.mjs'
 ];
 
 console.log("====================================================");

@@ -57,6 +57,125 @@ function verifyProvisioningToken(token) {
 
   return { success: false, code: "UNAUTHORIZED", message: "Invalid provisioning token." };
 }
+
+/**
+ * SEC-007: 地区別 Google Maps API Key 解決ハンドラ
+ * @param {string} districtId - 対象地区コード (任意・推奨)
+ * @param {string} sessionToken - Dashboardセッショントークン (任意)
+ * @return {Object} レスポンスオブジェクト
+ */
+function handleGetMapsApiKey(districtId, sessionToken) {
+  const cleanDistrictId = String(districtId || '').trim().toUpperCase();
+  const props = (typeof PropertiesService !== 'undefined' && PropertiesService.getScriptProperties)
+    ? PropertiesService.getScriptProperties()
+    : null;
+  const hasRegistry = props && !!props.getProperty('DISTRICT_REGISTRY');
+
+  // 1. cleanDistrictId が指定されている場合の検証
+  if (cleanDistrictId) {
+    // Gate 1: DISTRICT_REGISTRY による地区存在確認
+    if (hasRegistry) {
+      let isRegistered = false;
+      try {
+        const regRaw = props.getProperty('DISTRICT_REGISTRY') || '{}';
+        const registry = JSON.parse(regRaw);
+        isRegistered = Object.keys(registry).some(k => k.trim().toUpperCase() === cleanDistrictId);
+      } catch (eReg) {
+        console.error('[handleGetMapsApiKey] Failed to parse DISTRICT_REGISTRY:', eReg);
+      }
+
+      if (!isRegistered) {
+        return {
+          success: false,
+          code: "DISTRICT_NOT_FOUND",
+          message: `District '${cleanDistrictId}' is not registered in DISTRICT_REGISTRY.`
+        };
+      }
+    }
+
+    // Gate 2: Dashboard Session Binding (tokenが存在する場合)
+    if (sessionToken && typeof verifyDashboardSession === 'function') {
+      const dashCheck = verifyDashboardSession(sessionToken, cleanDistrictId);
+      if (!dashCheck.success) {
+        return {
+          success: false,
+          code: "UNAUTHORIZED",
+          message: "Session district mismatch. Cross-district key access denied."
+        };
+      }
+    }
+
+    // Gate 3: Integrity Guard (DISTRICT_MISMATCH 照合)
+    if (typeof SpreadsheetResolver !== 'undefined' && SpreadsheetResolver.getInstance) {
+      try {
+        SpreadsheetResolver.getInstance().getSpreadsheet(cleanDistrictId);
+      } catch (eResolver) {
+        const errStr = eResolver.toString();
+        if (errStr.includes("DISTRICT_MISMATCH")) {
+          return {
+            success: false,
+            code: "DISTRICT_MISMATCH",
+            message: eResolver.message
+          };
+        }
+        if (errStr.includes("not found in DISTRICT_REGISTRY")) {
+          return {
+            success: false,
+            code: "DISTRICT_NOT_FOUND",
+            message: `District '${cleanDistrictId}' is not registered in DISTRICT_REGISTRY.`
+          };
+        }
+      }
+    }
+
+    // Gate 4: Contract Gate (契約状態確認)
+    if (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
+      try {
+        const contract = SystemInfoService.getInstance().getContractStatus(null, new Date(), cleanDistrictId);
+        if (contract && (contract.isExpired || contract.code === 'CONTRACT_EXPIRED')) {
+          return {
+            success: false,
+            code: "CONTRACT_EXPIRED",
+            message: contract.message || "契約期間が終了しているため利用できません。"
+          };
+        }
+      } catch (eContract) {}
+    }
+
+    // Layer 2: 地区別Key探索 (最優先)
+    const districtKeyProp = 'GOOGLE_MAPS_API_KEY_' + cleanDistrictId;
+    const districtKey = props ? props.getProperty(districtKeyProp) : null;
+    if (districtKey && districtKey.trim()) {
+      return {
+        success: true,
+        districtId: cleanDistrictId,
+        mapsApiKey: districtKey.trim(),
+        isFallback: false
+      };
+    }
+  }
+
+  // 2. districtId 未指定時 or 地区別Key未設定時の Phase 1 Legacy Fallback
+  const legacyKey = props ? props.getProperty('GOOGLE_MAPS_API_KEY') : null;
+  if (legacyKey && legacyKey.trim()) {
+    return {
+      success: true,
+      districtId: cleanDistrictId || '',
+      mapsApiKey: legacyKey.trim(),
+      isFallback: true
+    };
+  }
+
+  // 3. Key未設定 (地区別Keyも旧Keyも存在しない)
+  return {
+    success: false,
+    code: "MAPS_KEY_NOT_CONFIGURED",
+    message: cleanDistrictId
+      ? `Google Maps API Key is not configured for district '${cleanDistrictId}'.`
+      : "Google Maps API Key is not configured."
+  };
+}
+
 /**
  * GETリクエスト：JSONデータの取得
  */
@@ -264,9 +383,11 @@ function processGetActionLegacy(action, e, districtId = "") {
       case 'getSystemSummary':
         response = typeof SystemSummaryService !== 'undefined' ? SystemSummaryService.getInstance().getSystemSummary(districtId) : { success: true, ...getDashboardData() };
         break;
-      case 'getMapsApiKey':
-        response = { success: true, mapsApiKey: PropertiesService.getScriptProperties().getProperty('GOOGLE_MAPS_API_KEY') || "" };
+      case 'getMapsApiKey': {
+        const dashToken = (e && e.parameter && (e.parameter.dashboardSessionToken || e.parameter.managerSessionToken)) || "";
+        response = handleGetMapsApiKey(districtId, dashToken);
         break;
+      }
       case 'getTier1':
         response = typeof Tier1Service !== 'undefined' ? Tier1Service.getInstance().getTier1() : { success: false };
         break;
@@ -1004,8 +1125,11 @@ function processPostAction(action, postData, e, districtId = "") {
 
     case 'getSystemSummary':
       return typeof SystemSummaryService !== 'undefined' ? SystemSummaryService.getInstance().getSystemSummary(districtId) : { success: false };
-    case 'getMapsApiKey':
-      return { success: true, mapsApiKey: PropertiesService.getScriptProperties().getProperty('GOOGLE_MAPS_API_KEY') || "" };
+    case 'getMapsApiKey': {
+      const dashToken = (postData && (postData.dashboardSessionToken || postData.managerSessionToken))
+                     || (e && e.parameter && (e.parameter.dashboardSessionToken || e.parameter.managerSessionToken)) || "";
+      return handleGetMapsApiKey(districtId, dashToken);
+    }
     case 'getTier1':
       return typeof Tier1Service !== 'undefined' ? Tier1Service.getInstance().getTier1() : { success: false };
     case 'getSystemInfo':
