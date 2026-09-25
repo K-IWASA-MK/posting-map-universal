@@ -106,7 +106,7 @@ function handleGetMapsApiKey(districtId, sessionToken) {
     }
 
     // Gate 3: Integrity Guard (DISTRICT_MISMATCH 照合)
-    if (typeof SpreadsheetResolver !== 'undefined' && SpreadsheetResolver.getInstance) {
+    if (hasRegistry && typeof SpreadsheetResolver !== 'undefined' && SpreadsheetResolver.getInstance) {
       try {
         SpreadsheetResolver.getInstance().getSpreadsheet(cleanDistrictId);
       } catch (eResolver) {
@@ -129,7 +129,7 @@ function handleGetMapsApiKey(districtId, sessionToken) {
     }
 
     // Gate 4: Contract Gate (契約状態確認)
-    if (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
+    if (hasRegistry && typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
       try {
         const contract = SystemInfoService.getInstance().getContractStatus(null, new Date(), cleanDistrictId);
         if (contract && (contract.isExpired || contract.code === 'CONTRACT_EXPIRED')) {
@@ -169,10 +169,10 @@ function handleGetMapsApiKey(districtId, sessionToken) {
   // 3. Key未設定 (地区別Keyも旧Keyも存在しない)
   return {
     success: false,
-    code: "MAPS_KEY_NOT_CONFIGURED",
+    code: cleanDistrictId ? "MAPS_KEY_NOT_CONFIGURED" : "MISSING_DISTRICT_ID",
     message: cleanDistrictId
       ? `Google Maps API Key is not configured for district '${cleanDistrictId}'.`
-      : "Google Maps API Key is not configured."
+      : "districtId is required to resolve Google Maps API Key."
   };
 }
 
@@ -254,6 +254,12 @@ function doGet(e) {
     })).setMimeType(ContentService.MimeType.JSON);
   } else if (action === 'getDeviceStatus') {
     return ContentService.createTextOutput(JSON.stringify({ success: true, exists: false, rows: [] }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } else if (action === 'getMapsApiKey') {
+    const sessionToken = params && (params.dashboardSessionToken || params.token);
+    const targetDistrictId = (params && params.districtId) || "";
+    const result = handleGetMapsApiKey(targetDistrictId, sessionToken);
+    return ContentService.createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
   } else if (action === 'syncSystemInfo') {
     const token = params && (params.provisioningToken || (params.options && params.options.provisioningToken));
@@ -811,6 +817,12 @@ function doPost(e) {
     } else {
       result = { success: false, message: 'migrateIdentityColumns not available' };
     }
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+  } else if (action === 'getMapsApiKey') {
+    const sessionToken = (postData && (postData.dashboardSessionToken || postData.token)) || (params && (params.dashboardSessionToken || params.token));
+    const targetDistrictId = (postData && postData.districtId) || districtId || (params && params.districtId);
+    const result = handleGetMapsApiKey(targetDistrictId, sessionToken);
     return ContentService.createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
   }
