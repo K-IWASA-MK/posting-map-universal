@@ -22,7 +22,7 @@ URL を変更してはならない。
 
 | Environment | Status | Script ID | Deployment ID | Web App URL | Notes |
 |---|---|---|---|---|---|
-| UNIVERSAL_BASE | Standalone Template (Unset) | `UNSET` | `UNSET` | `UNSET` | 汎用エンジンテンプレート（未接続） |
+| UNIVERSAL_BASE | Production Active | `1qDMhog2befTWrq_5Sct3N28712wdh-f72VYLBA_bqNSuvUNHTaoeXTac` | `AKfycbyjeoNc8CeTT6AyNdTSBTqLFGHs23vUaQiavSlsPKjVmMBZ5hE_KlJqN8RI12cgb7S-` | https://script.google.com/macros/s/AKfycbyjeoNc8CeTT6AyNdTSBTqLFGHs23vUaQiavSlsPKjVmMBZ5hE_KlJqN8RI12cgb7S-/exec | Universal Engine Standalone Production Deployment (SSOT) |
 
 ---
 
