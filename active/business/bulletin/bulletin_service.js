@@ -1,4 +1,14 @@
 (function(global) {
+  if (typeof sanitizeFormula === 'undefined') {
+    sanitizeFormula = function(val) {
+      if (typeof val !== 'string') return val;
+      if (/^[=\+\-@\t\r]/.test(val)) {
+        return "'" + val;
+      }
+      return val;
+    };
+  }
+
   class BulletinService {
     constructor() {}
 
@@ -114,7 +124,13 @@
         const now = new Date();
         const formattedDate = Utilities.formatDate(now, "JST", "yyyy/MM/dd HH:mm:ss");
 
-        sheet.appendRow([formattedDate, staffId, staffName, message, cleanLineUserId]);
+        sheet.appendRow([
+          formattedDate,
+          sanitizeFormula(staffId),
+          sanitizeFormula(staffName),
+          sanitizeFormula(message),
+          cleanLineUserId
+        ]);
 
         return {
           success: true,
@@ -229,10 +245,10 @@
           contactSheet.appendRow([
             requestTime,
             requestUserId,
-            requestUserName,
+            sanitizeFormula(requestUserName),
             targetStaffId,
             contactMethod,
-            contactValue,
+            sanitizeFormula(contactValue),
             requestId,
             "PROCESSING",
             "",

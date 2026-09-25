@@ -6,6 +6,16 @@
  * Responsibility: 「保有チラシ枚数」Spreadsheet への読込・書き込みカプセル化
  */
 
+if (typeof sanitizeFormula === 'undefined') {
+  sanitizeFormula = function(val) {
+    if (typeof val !== 'string') return val;
+    if (/^[=\+\-@\t\r]/.test(val)) {
+      return "'" + val;
+    }
+    return val;
+  };
+}
+
 if (typeof FlyerRepository === 'undefined') {
   FlyerRepository = class FlyerRepository {
     constructor() {
@@ -112,14 +122,16 @@ if (typeof FlyerRepository === 'undefined') {
           }
         }
 
+        const safeStaffName = sanitizeFormula(cleanStaffName);
+        const safeLocation = sanitizeFormula(location);
         if (targetRow > 0) {
           // updateStock() は現在保有しているチラシ枚数および保管場所を最新の入力値で保存する。
           const finalCount = count;
-          s.getRange(targetRow, 3, 1, 5).setValues([[cleanStaffName, location, finalCount, updatedAt, cleanLineUserId]]);
+          s.getRange(targetRow, 3, 1, 5).setValues([[safeStaffName, safeLocation, finalCount, updatedAt, cleanLineUserId]]);
         } else {
           const newRow = lastRow + 1;
           const newId = "ST" + String(newRow - 1).padStart(3, '0');
-          s.getRange(newRow, 1, 1, 7).setValues([[newId, cleanStaffId, cleanStaffName, location, count, updatedAt, cleanLineUserId]]);
+          s.getRange(newRow, 1, 1, 7).setValues([[newId, cleanStaffId, safeStaffName, safeLocation, count, updatedAt, cleanLineUserId]]);
         }
         return { success: true };
       } finally {

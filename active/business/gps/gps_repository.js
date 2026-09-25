@@ -6,6 +6,16 @@
  * Responsibility: Google Drive への写真保存、指定エリアシートへの GPS・写真情報書き込み
  */
 
+if (typeof sanitizeFormula === 'undefined') {
+  sanitizeFormula = function(val) {
+    if (typeof val !== 'string') return val;
+    if (/^[=\+\-@\t\r]/.test(val)) {
+      return "'" + val;
+    }
+    return val;
+  };
+}
+
 if (typeof GPSRepository === 'undefined') {
   GPSRepository = class GPSRepository {
     constructor() {
@@ -109,8 +119,8 @@ if (typeof GPSRepository === 'undefined') {
 
          if (isValidGps) {
            finalGpsStatus = "OK";
-           latNum = data.latitude;
-           lngNum = data.longitude;
+           latNum = Number(latTemp);
+           lngNum = Number(lngTemp);
            gpsTimestamp = completedAt;
          } else {
            finalGpsStatus = "NO";
@@ -149,7 +159,7 @@ if (typeof GPSRepository === 'undefined') {
                 completedAt,
                 countVal,
                 data.staffId || "",
-                data.staffName || "",
+                sanitizeFormula(data.staffName || ""),
                 finalGpsStatus,
                 photoStatus,
                 latNum,

@@ -15,6 +15,16 @@ function normalizeName(str) {
   return s.replace(/[\s\u3000\u200b\u200c\u200d\uFEFF]/g, "");
 }
 
+if (typeof sanitizeFormula === 'undefined') {
+  sanitizeFormula = function(val) {
+    if (typeof val !== 'string') return val;
+    if (/^[=\+\-@\t\r]/.test(val)) {
+      return "'" + val;
+    }
+    return val;
+  };
+}
+
 if (typeof StaffRepository === 'undefined') {
   StaffRepository = class StaffRepository {
     constructor() {
@@ -181,7 +191,8 @@ if (typeof StaffRepository === 'undefined') {
         registeredAt = `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
       }
 
-      sheet.getRange(targetRow, 1, 1, 4).setValues([[newId, cleanName, cleanLineUserId, registeredAt]]);
+      const safeName = sanitizeFormula(cleanName);
+      sheet.getRange(targetRow, 1, 1, 4).setValues([[newId, safeName, cleanLineUserId, registeredAt]]);
       if (typeof SpreadsheetApp !== 'undefined' && typeof SpreadsheetApp.flush === 'function') {
         SpreadsheetApp.flush();
       }

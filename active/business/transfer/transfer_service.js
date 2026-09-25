@@ -1,4 +1,14 @@
 (function(global) {
+  if (typeof sanitizeFormula === 'undefined') {
+    sanitizeFormula = function(val) {
+      if (typeof val !== 'string') return val;
+      if (/^[=\+\-@\t\r]/.test(val)) {
+        return "'" + val;
+      }
+      return val;
+    };
+  }
+
   class TransferService {
     constructor() {}
 
@@ -144,12 +154,12 @@
           const cleanHolderLineId = String(holderLineUserId || "").trim();
           s.appendRow([
             requestTime,
-            requestUserName,
+            sanitizeFormula(requestUserName),
             requestUserId,
-            holderName,
+            sanitizeFormula(holderName),
             holderUserId,
             contactMethod,
-            contactValue,
+            sanitizeFormula(contactValue),
             "要請中",
             requestId,
             "PROCESSING",
