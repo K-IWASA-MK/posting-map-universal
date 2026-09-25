@@ -5,6 +5,7 @@ const REPO_ROOT = '/Volumes/SSD_DATA/posting-map-universal';
 const TESTS_DIR = path.join(REPO_ROOT, 'tests');
 
 const testSuites = [
+  'test_phase21_multiregion_verification.mjs',
   'test_phase20_monitoring_verification.mjs',
   'test_phase19_cutover_verification.mjs',
   'test_phase18_migration_verification.mjs',
