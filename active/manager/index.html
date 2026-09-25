@@ -275,10 +275,13 @@
       <div id="mobile-city-selector-list" class="hidden fixed top-14 h-[122px] max-h-[122px] p-1.5 rounded-xl bg-[#0B1019]/95 backdrop-blur-md border border-borderNormal overflow-y-auto space-y-0.5 z-50 shadow-2xl"></div>
     </div>
 
-    <!-- LIVEステータス -->
+    <!-- LIVEステータス & ログアウト -->
     <div class="flex items-center gap-1.5 text-[10px] font-mono text-textSub flex-shrink-0">
       <span id="mobile-live-dot" class="w-2 h-2 rounded-full bg-statusGreen"></span>
       <span id="mobile-sync-clock">--:--</span>
+      <button onclick="handleManagerLogout()" type="button" class="ml-1 px-1.5 py-0.5 rounded bg-transparent border border-borderNormal hover:border-statusRed/40 text-textSub hover:text-statusRed cursor-pointer" title="ログアウト">
+        🔒
+      </button>
     </div>
   </header>
 
@@ -374,6 +377,10 @@
           <span id="sync-clock">--:--:--</span>
         </div>
       </div>
+      <!-- ログアウトボタン (PC用) -->
+      <button onclick="handleManagerLogout()" type="button" class="w-full mt-2 h-7 rounded-lg bg-transparent hover:bg-statusRed/10 border border-borderNormal hover:border-statusRed/40 text-textSub hover:text-statusRed text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer">
+        <span>🔒</span> ログアウト
+      </button>
     </div>
   </aside>
 

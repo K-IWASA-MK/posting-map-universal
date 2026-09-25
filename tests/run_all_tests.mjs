@@ -28,7 +28,8 @@ const testSuites = [
   'test_line_push_idempotency_audit.mjs',
   'test_contract_expiry.mjs',
   'test_backend_dashboard_identity.mjs',
-  'test_optimistic_startup_safety.mjs'
+  'test_optimistic_startup_safety.mjs',
+  'test_sec001_dashboard_auth_fix.mjs'
 ];
 
 console.log("====================================================");

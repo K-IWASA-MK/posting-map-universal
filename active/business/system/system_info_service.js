@@ -116,9 +116,17 @@
         }
 
         if (inputPassword.trim() === storedPassword) {
-          return { success: true, districtCode: districtName };
+          const session = (typeof createDashboardSession === 'function')
+            ? createDashboardSession(districtName)
+            : { token: 'pms_dash_' + Date.now(), expiresAt: Date.now() + 21600000, districtId: districtName };
+          return {
+            success: true,
+            districtCode: districtName,
+            dashboardSessionToken: session.token,
+            expiresAt: session.expiresAt
+          };
         } else {
-          return { success: false, message: '認証コードが正しくありません' };
+          return { success: false, code: "UNAUTHORIZED", message: '認証コードが正しくありません' };
         }
       } catch (err) {
         return { success: false, message: '認証処理中にエラーが発生しました: ' + err.message };

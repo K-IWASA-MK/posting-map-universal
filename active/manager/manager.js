@@ -106,17 +106,6 @@ function getAreaStatusConfig(isCompleted, isInProgress) {
   return AREA_STATUS_CONFIG.UNALLOCATED;
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initDashboard);
-} else {
-  initDashboard();
-}
-
-let _isDashboardInitialized = false;
-let _isSyncing = false;
-let _isInitialSummaryFresh = false;
-let _hasAppliedPinStatus = false;
-
 function getResolvedDistrictCode() {
   if (typeof window !== 'undefined' && window.location && window.location.hostname) {
     const host = window.location.hostname.toLowerCase();
@@ -136,34 +125,58 @@ function getResolvedDistrictCode() {
   return 'DEFAULT';
 }
 
+// ─── Dashboard サーバーサイドセッション管理 (SEC-001) ───────────
+const DASHBOARD_SESSION_KEY_PREFIX = 'pm_dash_session_';
+
+function getDashboardSessionToken(districtCode) {
+  const code = districtCode || getResolvedDistrictCode();
+  const key = DASHBOARD_SESSION_KEY_PREFIX + code;
+  try {
+    return sessionStorage.getItem(key) || localStorage.getItem(key) || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function setDashboardSessionToken(districtCode, token) {
+  const code = districtCode || getResolvedDistrictCode();
+  const key = DASHBOARD_SESSION_KEY_PREFIX + code;
+  try {
+    sessionStorage.setItem(key, token);
+    localStorage.setItem(key, token);
+  } catch (e) {}
+}
+
+function clearDashboardSessionToken(districtCode) {
+  const code = districtCode || getResolvedDistrictCode();
+  const key = DASHBOARD_SESSION_KEY_PREFIX + code;
+  try {
+    sessionStorage.removeItem(key);
+    localStorage.removeItem(key);
+    localStorage.removeItem('pm_auth_' + code);
+  } catch (e) {}
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initDashboard);
+} else {
+  initDashboard();
+}
+
+let _isDashboardInitialized = false;
+let _isSyncing = false;
+let _isInitialSummaryFresh = false;
+let _hasAppliedPinStatus = false;
+
 async function checkManagerAuth() {
   const districtCode = getResolvedDistrictCode();
   DashboardState.districtCode = districtCode;
-  const authKey = 'pm_auth_' + districtCode;
 
-  let isLocallyAuthed = false;
-  try {
-    isLocallyAuthed = (localStorage.getItem(authKey) === 'true' || sessionStorage.getItem(authKey) === 'true');
-  } catch (e) {}
-
-  if (isLocallyAuthed) {
-    try {
-      const summary = await callApiPost('getSystemSummary');
-      if (summary && (summary.code === 'CONTRACT_EXPIRED' || summary.contractStatus === 'EXPIRED' || summary.isExpired === true)) {
-        return false;
-      }
-      if (summary && summary.districtName) {
-        DashboardState.districtCode = summary.districtName;
-        DashboardState.summary = summary;
-        _isInitialSummaryFresh = true;
-      }
-    } catch (err) {
-      console.warn('[Background SystemSummary Error]', err);
-    }
-    return true;
-  }
-
-  if (districtCode && districtCode !== 'DEFAULT') {
+  // サーバーサイドセッショントークンが存在するか確認
+  const token = getDashboardSessionToken(districtCode);
+  if (!token) {
+    // トークンが存在しない場合、localStorage改ざん（pm_auth_xxx=true）があっても拒否
+    clearDashboardSessionToken(districtCode);
     return false;
   }
 
@@ -176,23 +189,29 @@ async function checkManagerAuth() {
       DashboardState.districtCode = summary.districtName;
       DashboardState.summary = summary;
       _isInitialSummaryFresh = true;
-      const verifiedAuthKey = 'pm_auth_' + summary.districtName;
-      if (localStorage.getItem(verifiedAuthKey) === 'true' || sessionStorage.getItem(verifiedAuthKey) === 'true') {
-        return true;
-      }
     }
+    return true;
   } catch (err) {
-    console.warn('[Auth Check Error]', err);
+    console.warn('[Manager Auth Check Error]', err);
+    if (err.message && (err.message.includes('UNAUTHORIZED') || err.message.includes('session') || err.message.includes('MISMATCH'))) {
+      clearDashboardSessionToken(districtCode);
+      return false;
+    }
+    return false;
   }
-  return false;
 }
 
-function showManagerPinGate() {
+function showManagerPinGate(customMessage) {
   const gateEl = document.getElementById('manager-pin-gate');
   if (gateEl) {
     gateEl.classList.remove('hidden');
+    const errorEl = document.getElementById('manager-pin-error');
+    if (errorEl && customMessage) {
+      errorEl.textContent = customMessage;
+    }
     const inputEl = document.getElementById('manager-pin-input');
     if (inputEl) {
+      inputEl.value = '';
       setTimeout(() => inputEl.focus(), 100);
     }
   }
@@ -228,8 +247,9 @@ async function handleManagerPinSubmit(event) {
 
   try {
     const res = await callApiPost('verifyManagerPassword', { password: pin }, { timeoutMs: 45000 });
-    if (res && res.success) {
+    if (res && res.success && res.dashboardSessionToken) {
       const districtCode = res.districtCode || getResolvedDistrictCode();
+      setDashboardSessionToken(districtCode, res.dashboardSessionToken);
       localStorage.setItem('pm_auth_' + districtCode, 'true');
       localStorage.setItem('pm_last_district', districtCode);
       DashboardState.districtCode = districtCode;
@@ -248,8 +268,23 @@ async function handleManagerPinSubmit(event) {
     if (btnSpinner) btnSpinner.classList.add('hidden');
   }
 }
+
+async function handleManagerLogout() {
+  const districtCode = DashboardState.districtCode || getResolvedDistrictCode();
+  try {
+    await callApiPost('logoutManager', {});
+  } catch (e) {}
+  clearDashboardSessionToken(districtCode);
+  _isDashboardInitialized = false;
+  showManagerPinGate('ログアウトしました。');
+}
+
 if (typeof window !== 'undefined') {
   window.handleManagerPinSubmit = handleManagerPinSubmit;
+  window.handleManagerLogout = handleManagerLogout;
+  window.getDashboardSessionToken = getDashboardSessionToken;
+  window.setDashboardSessionToken = setDashboardSessionToken;
+  window.clearDashboardSessionToken = clearDashboardSessionToken;
 }
 
 async function initDashboard() {
@@ -328,6 +363,14 @@ async function callApiPost(action, payload = {}, options = {}) {
   if (districtId && !payload.districtId) {
     payload.districtId = districtId;
   }
+
+  // Dashboard 認証セッショントークンを自動付与 (SEC-001)
+  const targetDistrict = payload.districtId || districtId;
+  const dashToken = (typeof getDashboardSessionToken === 'function') ? getDashboardSessionToken(targetDistrict) : '';
+  if (dashToken && !payload.dashboardSessionToken) {
+    payload.dashboardSessionToken = dashToken;
+  }
+
   const url = `${getApiUrl()}?action=${encodeURIComponent(action)}&_t=${Date.now()}`;
   const body = JSON.stringify({ action, ...payload });
 
@@ -355,6 +398,18 @@ async function callApiPost(action, payload = {}, options = {}) {
     throw new Error("JSON形式ではない応答を受け取りました: " + parseErr.message);
   }
 
+  // 認証エラー検知 (UNAUTHORIZED / DISTRICT_MISMATCH)
+  if (data && data.success === false && (data.code === 'UNAUTHORIZED' || data.code === 'DISTRICT_MISMATCH')) {
+    if (typeof clearDashboardSessionToken === 'function') {
+      clearDashboardSessionToken(targetDistrict);
+    }
+    if (typeof showManagerPinGate === 'function' && action !== 'verifyManagerPassword') {
+      _isDashboardInitialized = false;
+      showManagerPinGate(data.message || 'セッションの有効期限が切れました。再度PINを入力してください。');
+    }
+    throw new Error(data.message || "認証エラーが発生しました");
+  }
+
   if (data && typeof data === 'object' && 'data' in data && data.data !== null) {
     const innerSuccess = data.data.success !== undefined ? data.data.success : data.success;
     if (innerSuccess === false) throw new Error(data.data.message || data.message || "API Error");
@@ -364,6 +419,7 @@ async function callApiPost(action, payload = {}, options = {}) {
   if (data.success === false) throw new Error(data.message || "API Error");
   return data;
 }
+
 
 async function loadAddressMaster() {
   try {

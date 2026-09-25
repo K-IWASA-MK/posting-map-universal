@@ -187,10 +187,12 @@ Backend: ペイロード強制上書き (クライアント送信値を破棄)
 
 | 認可レベル | 対象アクション例 | 必要な資格情報 | 拒絶時のレスポンス |
 |---|---|---|---|
-| **Public (公開)** | `getSystemSummary`, `getMapsApiKey`, `getSystemInfo` | なし (認証不要) | なし |
+| **Public (公開)** | `getMapsApiKey`, `verifyManagerPassword`, `getTier1`, `getSystemInfo` | なし (認証不要) | なし |
+| **Dashboard Manager (管理者専用)** | `getDashboardSnapshot`, `getRoster`, `getTransferRequests`, `logoutManager` | 有効な `dashboardSessionToken` (6桁PIN認証済・地区バインド) | `UNAUTHORIZED` (未認証/期限切れ) / `DISTRICT_MISMATCH` |
+| **Dual-Audience (業務データ読取)** | `getSystemSummary`, `getRanking`, `getFlyerStock`, `getLatestDistribution`, `getDeliveryStats`, `getAreaDetails`, `getGlobalPinStatus`, `getBulletinPosts` | 有効な `dashboardSessionToken` または 有効な `liffToken` | `UNAUTHORIZED` (未認証アクセス) |
 | **Unregistered Staff** | `registerStaff` (名簿初回登録) | 有効な `liffToken` (LINE検証成功) | `UNAUTHORIZED` (無効/期限切れトークン) |
-| **Active Staff (配布員)** | `submitDistribution`, `updateRecordWithGPSPhoto`, `getRanking`, `getFlyerStock`, `updateFlyerStock`, `requestFlyerTransfer` | 有効な `liffToken` ＋ 名簿登録済み (`found === true`) | `NOT_REGISTERED` (名簿未登録) / `UNAUTHORIZED` |
-| **Manager (管理者)** | `getRoster`, `getTransferRequests`, `verifyManagerPassword` | 管理者パスワード検証、または管理用セッション | `FORBIDDEN` / `UNAUTHORIZED` |
+| **Active Staff (配布員書き込み)** | `submitDistribution`, `updateRecordWithGPSPhoto`, `updateFlyerStock`, `requestFlyerTransfer`, `createBulletinPost`, `sendBulletinContact`, `resolveTransferRequest` | 有効な `liffToken` ＋ 名簿登録済み (`found === true`) | `NOT_REGISTERED` (名簿未登録) / `UNAUTHORIZED` |
+
 
 ---
 

@@ -85,24 +85,31 @@ function doGet(e) {
 
   const action = params.action || "";
 
-  const isReadOnlyAction = [
-    'getSystemSummary',
-    'getDashboardData',
-    'getTier1',
-    'getFlyerStock',
-    'getRanking',
-    'getLatestDistribution',
+  const isPublicAction = [
     'getMapsApiKey',
-    'getDeliveryStats',
-    'getAreaDetails',
-    'getGlobalPinStatus',
-    'getBulletinPosts',
+    'getTier1',
+    'getSystemInfo',
+    'registerOrValidateDevice',
+    'getDeviceStatus',
     'verifyManagerPassword'
   ].includes(action);
 
-  const isDashboardAction = [
+  const isDashboardOnlyAction = [
     'getRoster',
-    'getTransferRequests'
+    'getTransferRequests',
+    'getDashboardSnapshot'
+  ].includes(action);
+
+  const isDualAuthAction = [
+    'getSystemSummary',
+    'getDashboardData',
+    'getRanking',
+    'getFlyerStock',
+    'getLatestDistribution',
+    'getDeliveryStats',
+    'getAreaDetails',
+    'getGlobalPinStatus',
+    'getBulletinPosts'
   ].includes(action);
 
   if (action === 'registerOrValidateDevice') {
@@ -207,16 +214,36 @@ function doGet(e) {
     }
   }
 
-  if (!isReadOnlyAction && !isDashboardAction) {
-    const auth = authenticateRequest(params);
-    if (!auth.success) {
-      return ContentService.createTextOutput(JSON.stringify(auth))
-        .setMimeType(ContentService.MimeType.JSON);
+  // 4. 厳格な認証ゲート (SEC-001)
+  if (!isPublicAction) {
+    const dashToken = (params && (params.dashboardSessionToken || params.managerSessionToken)) || "";
+    let isDashAuthed = false;
+    if (dashToken && typeof verifyDashboardSession === 'function') {
+      const dashCheck = verifyDashboardSession(dashToken, districtId);
+      if (dashCheck.success) {
+        isDashAuthed = true;
+        e.user = { role: 'MANAGER', districtId: dashCheck.session.districtId };
+      } else if (isDashboardOnlyAction) {
+        return ContentService.createTextOutput(JSON.stringify(dashCheck))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
     }
-    e.user = auth.user;
-  } else {
-    const auth = authenticateRequest(params);
-    e.user = auth.success ? auth.user : null;
+
+    if (isDashboardOnlyAction || isDualAuthAction) {
+      if (!isDashAuthed) {
+        return ContentService.createTextOutput(JSON.stringify({
+          success: false,
+          code: "UNAUTHORIZED",
+          message: isDashboardOnlyAction ? "Dashboard session token is required." : "Authentication required for this resource."
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    } else {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        code: "UNAUTHORIZED",
+        message: "Authentication required."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
   }
   const res = processGetActionLegacy(action, e, districtId);
   if (res && typeof res.setMimeType === 'function') {
@@ -393,26 +420,36 @@ function doPost(e) {
     } catch (eProps) {}
   }
 
-  const isReadOnlyAction = [
-    'getSystemSummary',
-    'getDashboardData',
-    'getTier1',
-    'getFlyerStock',
-    'getRanking',
-    'getLatestDistribution',
+  const isPublicAction = [
     'getMapsApiKey',
-    'getDeliveryStats',
-    'getAreaDetails',
-    'getGlobalPinStatus',
-    'getBulletinPosts',
+    'getTier1',
+    'getSystemInfo',
+    'registerOrValidateDevice',
+    'getDeviceStatus',
     'verifyManagerPassword'
   ].includes(action);
 
-  const isDashboardAction = [
+  const isDashboardOnlyAction = [
     'getRoster',
     'getTransferRequests',
-    'getDashboardSnapshot'
+    'getDashboardSnapshot',
+    'logoutManager'
   ].includes(action);
+
+  const isDualAuthAction = [
+    'getSystemSummary',
+    'getDashboardData',
+    'getRanking',
+    'getFlyerStock',
+    'getLatestDistribution',
+    'getDeliveryStats',
+    'getAreaDetails',
+    'getGlobalPinStatus',
+    'getBulletinPosts'
+  ].includes(action);
+
+  const isDashboardAction = isDashboardOnlyAction;
+  const isReadOnlyAction = isDashboardOnlyAction || isDualAuthAction;
 
   if (action === 'registerOrValidateDevice') {
     return ContentService.createTextOutput(JSON.stringify({ success: true, authorized: true }))
@@ -690,23 +727,54 @@ function doPost(e) {
     }
   }
 
-  if (!isReadOnlyAction && !isDashboardAction) {
-    const auth = authenticateRequest(postData || {});
-    if (!auth.success) {
-      return ContentService.createTextOutput(JSON.stringify(auth))
-        .setMimeType(ContentService.MimeType.JSON);
+  // 3. 厳格な認証ゲート (SEC-001)
+  if (!isPublicAction && !isManagementAction) {
+    const dashToken = (postData && (postData.dashboardSessionToken || postData.managerSessionToken))
+                   || (params && (params.dashboardSessionToken || params.managerSessionToken)) || "";
+    let isDashAuthed = false;
+
+    if (dashToken && typeof verifyDashboardSession === 'function') {
+      const dashCheck = verifyDashboardSession(dashToken, districtId);
+      if (dashCheck.success) {
+        isDashAuthed = true;
+        if (postData) {
+          postData.user = { role: 'MANAGER', districtId: dashCheck.session.districtId };
+        }
+      } else if (isDashboardOnlyAction) {
+        return ContentService.createTextOutput(JSON.stringify(dashCheck))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
     }
-    if (postData) {
-      postData.user = auth.user;
+
+    if (isDashboardOnlyAction) {
+      if (!isDashAuthed) {
+        return ContentService.createTextOutput(JSON.stringify({
+          success: false,
+          code: "UNAUTHORIZED",
+          message: "Dashboard session token is required."
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    } else if (isDualAuthAction) {
+      if (!isDashAuthed) {
+        // Dashboardセッションがない場合、Hアプリの LINE 認証を検証
+        const auth = authenticateRequest(postData || {});
+        if (!auth.success) {
+          return ContentService.createTextOutput(JSON.stringify({
+            success: false,
+            code: "UNAUTHORIZED",
+            message: "Authentication required for this resource."
+          })).setMimeType(ContentService.MimeType.JSON);
+        }
+        if (postData) postData.user = auth.user;
+      }
     } else {
-      postData = { user: auth.user };
-    }
-  } else {
-    const auth = authenticateRequest(postData || {});
-    if (postData) {
-      postData.user = auth.success ? auth.user : null;
-    } else {
-      postData = { user: auth.success ? auth.user : null };
+      // staffDependentActions や registerStaff 等の厳格 LINE 認証アクション
+      const auth = authenticateRequest(postData || {});
+      if (!auth.success) {
+        return ContentService.createTextOutput(JSON.stringify(auth))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      if (postData) postData.user = auth.user;
     }
   }
   const res = processPostAction(action, postData, e, districtId);
@@ -1089,6 +1157,14 @@ function processPostAction(action, postData, e, districtId = "") {
       return typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance
         ? SystemInfoService.getInstance().verifyManagerPassword(postPwd, districtId)
         : { success: false, message: 'SystemInfoService not available' };
+    case 'logoutManager': {
+      const dashToken = (postData && (postData.dashboardSessionToken || postData.managerSessionToken))
+                     || (params && (params.dashboardSessionToken || params.managerSessionToken)) || "";
+      const result = typeof revokeDashboardSession === 'function'
+        ? revokeDashboardSession(dashToken)
+        : { success: true, message: "Logged out." };
+      return result;
+    }
     default:
       return { success: false, message: 'Invalid POST action' };
   }

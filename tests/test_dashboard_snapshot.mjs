@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -108,7 +109,11 @@ global.Utilities = {
     const day = String(d.getDate()).padStart(2, '0');
     if (fmt === "yyyy-MM") return `${year}-${month}`;
     return `${year}-${month}-${day}`;
-  }
+  },
+  computeDigest: (alg, str) => {
+    return Array.from(crypto.createHash('sha256').update(str).digest());
+  },
+  getUuid: () => 'uuid_' + Math.random().toString(36).substring(2, 10)
 };
 
 global.ContentService = {
@@ -173,9 +178,11 @@ const distRepoCode = fs.readFileSync(path.join(rootDir, "active/business/distrib
 const distServiceCode = fs.readFileSync(path.join(rootDir, "active/business/distribution/distribution_service.js"), "utf8");
 const pinServiceCode = fs.readFileSync(path.join(rootDir, "active/business/pin/pin_status_service.js"), "utf8");
 const transferServiceCode = fs.readFileSync(path.join(rootDir, "active/business/transfer/transfer_service.js"), "utf8");
+const sessionCode = fs.readFileSync(path.join(rootDir, "active/api/auth/session.js"), "utf8");
 const systemSummaryCode = fs.readFileSync(path.join(rootDir, "active/business/system/system_summary_service.js"), "utf8");
 const v2ApiCode = fs.readFileSync(path.join(rootDir, "active/api/v2_api.js"), "utf8");
 
+vm.runInThisContext(sessionCode);
 vm.runInThisContext(adapterCode);
 vm.runInThisContext(monthlyResolverCode);
 vm.runInThisContext(staffModelCode);
@@ -193,12 +200,16 @@ vm.runInThisContext(systemSummaryCode);
 global.authenticateRequest = () => ({ success: true, user: { lineUserId: "U_KUWANA_001" } });
 vm.runInThisContext(v2ApiCode);
 
+// 有効な Dashboard 認証セッションの発行 (SEC-001)
+const dashSession = createDashboardSession("KUWANA");
+const validDashToken = dashSession.token;
+
 // -------------------------------------------------------------
 // [TEST 1] Snapshot Schema 完全性検証
 // -------------------------------------------------------------
 console.log("▶ [TEST 1] Snapshot Schema 完全性検証");
 const reqSnapshot = {
-  postData: { contents: JSON.stringify({ action: "getDashboardSnapshot", districtId: "KUWANA", limit: 20 }) }
+  postData: { contents: JSON.stringify({ action: "getDashboardSnapshot", districtId: "KUWANA", dashboardSessionToken: validDashToken, limit: 20 }) }
 };
 const resSnap = doPost(reqSnapshot);
 const snap = JSON.parse(resSnap.text);
@@ -223,37 +234,37 @@ console.log("  ✅ TEST 1 PASS: Snapshot Schema（7ドメイン構造・メタ�
 console.log("▶ [TEST 2] 既存 7 API と Snapshot 内ドメインデータの完全等価性検証");
 
 // 1. getSystemSummary
-const resSummary = doPost({ postData: { contents: JSON.stringify({ action: "getSystemSummary", districtId: "KUWANA" }) } });
+const resSummary = doPost({ postData: { contents: JSON.stringify({ action: "getSystemSummary", districtId: "KUWANA", dashboardSessionToken: validDashToken }) } });
 const jsonSummary = JSON.parse(resSummary.text);
 assert.deepEqual(snap.domains.summary, jsonSummary, "summary data must be identical");
 
 // 2. getFlyerStock
-const resStock = doPost({ postData: { contents: JSON.stringify({ action: "getFlyerStock", districtId: "KUWANA" }) } });
+const resStock = doPost({ postData: { contents: JSON.stringify({ action: "getFlyerStock", districtId: "KUWANA", dashboardSessionToken: validDashToken }) } });
 const jsonStock = JSON.parse(resStock.text);
 assert.deepEqual(snap.domains.flyerStock.stocks, jsonStock.stocks, "flyerStock must be identical");
 
 // 3. getRanking
-const resRank = doPost({ postData: { contents: JSON.stringify({ action: "getRanking", districtId: "KUWANA" }) } });
+const resRank = doPost({ postData: { contents: JSON.stringify({ action: "getRanking", districtId: "KUWANA", dashboardSessionToken: validDashToken }) } });
 const jsonRank = JSON.parse(resRank.text);
 assert.deepEqual(snap.domains.ranking, jsonRank, "ranking must be identical");
 
 // 4. getGlobalPinStatus
-const resPin = doPost({ postData: { contents: JSON.stringify({ action: "getGlobalPinStatus", districtId: "KUWANA" }) } });
+const resPin = doPost({ postData: { contents: JSON.stringify({ action: "getGlobalPinStatus", districtId: "KUWANA", dashboardSessionToken: validDashToken }) } });
 const jsonPin = JSON.parse(resPin.text);
 assert.deepEqual(snap.domains.pinStatus, jsonPin, "pinStatus must be identical");
 
 // 5. getRoster
-const resRoster = doPost({ postData: { contents: JSON.stringify({ action: "getRoster", districtId: "KUWANA" }) } });
+const resRoster = doPost({ postData: { contents: JSON.stringify({ action: "getRoster", districtId: "KUWANA", dashboardSessionToken: validDashToken }) } });
 const jsonRoster = JSON.parse(resRoster.text);
 assert.deepEqual(snap.domains.roster, jsonRoster, "roster must be identical");
 
 // 6. getTransferRequests
-const resTransfer = doPost({ postData: { contents: JSON.stringify({ action: "getTransferRequests", districtId: "KUWANA" }) } });
+const resTransfer = doPost({ postData: { contents: JSON.stringify({ action: "getTransferRequests", districtId: "KUWANA", dashboardSessionToken: validDashToken }) } });
 const jsonTransfer = JSON.parse(resTransfer.text);
 assert.deepEqual(snap.domains.transfer, jsonTransfer, "transfer requests must be identical");
 
 // 7. getLatestDistribution
-const resLatest = doPost({ postData: { contents: JSON.stringify({ action: "getLatestDistribution", districtId: "KUWANA", limit: 20 }) } });
+const resLatest = doPost({ postData: { contents: JSON.stringify({ action: "getLatestDistribution", districtId: "KUWANA", dashboardSessionToken: validDashToken, limit: 20 }) } });
 const jsonLatest = JSON.parse(resLatest.text);
 assert.deepEqual(snap.domains.latestDistribution, jsonLatest, "latestDistribution must be identical");
 
