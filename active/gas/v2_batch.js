@@ -215,3 +215,27 @@ function setupPinStatusCleanupTrigger() {
     .create();
   console.log("cleanupPinStatusDaily trigger set: daily at 0:00 AM JST");
 }
+
+/**
+ * 名簿および名簿の原本シートを初期化・再構築
+ * (M-01: v2_ui.js から移設)
+ */
+function setupRosterSheet() {
+  const ss = (typeof getSS === 'function') ? getSS() : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null);
+  if (typeof DistrictProvisioner !== 'undefined' && DistrictProvisioner.getInstance) {
+    DistrictProvisioner.getInstance().createStaffMaster(ss);
+    DistrictProvisioner.getInstance().rolloverMonthlySheets();
+    return "名簿の原本および当月名簿を4列新SSOT構造で再構築しました。";
+  }
+  return "DistrictProvisioner not available";
+}
+
+/**
+ * 日次トリガーから実行される月次判定・自動生成関数
+ * (M-02: v2_ui.js から移設)
+ */
+function rolloverMonthlySheetsDailyCheck() {
+  if (typeof DistrictProvisioner !== 'undefined' && DistrictProvisioner.getInstance) {
+    DistrictProvisioner.getInstance().rolloverMonthlySheets();
+  }
+}

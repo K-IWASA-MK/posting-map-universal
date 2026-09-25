@@ -12,15 +12,9 @@
     "gate:minus-1": "node scripts/verify-gate-minus-1.mjs",
     "test:dashboard:gate": "node tests/legacy/dashboard_verification_gate.mjs",
     "liff:acquire": "node scripts/acquire-liff-id.mjs",
-    "sync:config": "node scripts/sync-deployment-config.mjs",
     "check:ssot": "node scripts/validate-gas-endpoint-ssot.mjs",
     "verify:gas": "node scripts/verify-gas-deployment.mjs",
-    "deploy:gas": "node scripts/safe-deploy.mjs",
-    "provision:district": "node scripts/provision-district.mjs",
-    "check:provisioning": "node scripts/check-provisioning-gate.mjs",
-    "audit:gate": "node scripts/check-scope.mjs && node scripts/validate-district-data-gate.mjs",
-    "check:purity": "node scripts/check-pre-copy-purity.mjs",
-    "check:copy-safe": "node scripts/test-copy-simulation.mjs"
+    "deploy:gas": "node scripts/safe-deploy.mjs"
   },
   "keywords": [],
   "author": "",
