@@ -247,16 +247,17 @@ async function processQueue() {
       try {
         const payload = {
           requestId:  item.requestId  || '',
+          clientEventId: item.clientEventId || item.requestId || '',
           areaName:   item.areaName,
-          rowId:      item.rowId,
-          isDone:     item.isDone,
-          count:      item.count,
-          latitude:   item.latitude   || '',
-          longitude:  item.longitude  || '',
-          accuracy:   item.accuracy   || '',
-          photoData:  item.photoBase64 || '',
-          staffName:  item.staffName,
-          staffId:    item.staffId
+          rowId:          item.rowId,
+          isDone:         item.isDone,
+          count:          item.count,
+          latitude:       item.latitude   || '',
+          longitude:      item.longitude  || '',
+          accuracy:       item.accuracy   || '',
+          photoData:      item.photoBase64 || '',
+          staffName:      item.staffName,
+          staffId:        item.staffId
         };
 
         // 写真データはURL長制限を超えるためPOSTで送信

@@ -686,6 +686,15 @@ async function submitMissionComplete(areaName, rowId) {
             (typeof window.allPoints !== 'undefined' && Array.isArray(window.allPoints) && window.allPoints.find(point => point.rowId === rowId));
   if (!p) return;
 
+  // Phase 11 ガード: 完了確定した地区は当月再操作不可 (既存業務ルール維持)
+  const isAlreadyCompleted = (window.globalPinStatus && Array.isArray(window.globalPinStatus.completed) && window.globalPinStatus.completed.includes(Number(rowId))) ||
+                             (p.isDone && !p.isReadyToSubmit);
+  if (isAlreadyCompleted) {
+    alert("この地区は既に今月の配布が完了しています。再操作はできません。");
+    if (typeof closeDetailModal === 'function') closeDetailModal();
+    return;
+  }
+
   if (p.syncStatus === 'submitting') return;
   p.syncStatus = 'submitting';
 
@@ -736,11 +745,15 @@ async function submitMissionComplete(areaName, rowId) {
       ? window.generateRequestId('req')
       : ('req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
 
+    // 原本仕様: 活動送信ごとに一意の clientEventId (冪等性キー) を対応付け (ADR-013)
+    const clientEventId = requestId;
+
     if (typeof enqueueSync === 'function') {
       // 1. IndexedDB 送信キューに永続化
       await enqueueSync({
         requestId,
         areaName,
+        clientEventId,
         rowId: Number(rowId),
         isDone:     true,
         count:      p.count || 0,
